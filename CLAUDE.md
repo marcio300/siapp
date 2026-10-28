@@ -264,8 +264,11 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE
   only gets a MONTHLY plan. shadcn/ui not installed yet (no components needed; add when the member app
   starts). `vercel.json` has no crons yet (Phase 9).
-- **Gotchas**: embedded-postgres' Linux tarball lacks the `lib*.so.N` symlinks its binaries need —
-  `scripts/embedded-pg.ts` recreates them on start. When running as root (cloud sandboxes) the data dirs
+- **Gotchas**: embedded-postgres tarballs can't carry the `lib*.so.N` / `*.dylib` symlinks their binaries
+  need; the package's postinstall recreates them from `native/pg-symlinks.json`, but pnpm 10 skips install
+  scripts unless listed in `package.json` `pnpm.onlyBuiltDependencies` (done: embedded-postgres platform
+  packages, prisma, esbuild, sharp) — and `scripts/embedded-pg.ts` rebuilds the links from that manifest
+  on every start anyway (any platform). When running as root (cloud sandboxes) the data dirs
   must be owned by the `postgres` user: `mkdir -p .devdb .testdb && chown postgres .devdb .testdb`.
   `$queryRaw` on catalog columns of type `name` fails with the engine-less client — cast to `::text`.
   `next build` and `next dev` share `.next`; never run both at once. Don't `pkill -f "next dev"` from a

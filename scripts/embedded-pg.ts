@@ -70,37 +70,62 @@ function cleanStaleServerFiles(dataDir: string, port: number, log: (m: string) =
 }
 
 /**
- * The Linux binaries ship ICU as `libicuuc.so.60.2` etc. but link against the
- * SONAME `libicuuc.so.60`; npm tarballs can't carry symlinks, so on a fresh
- * install the loader can't find them. Create the missing `lib*.so.N` links
- * next to the versioned files (best effort, Linux only).
+ * The platform binaries link against SONAMEs like `libicuuc.so.60` (Linux) or
+ * `libicudata.77.dylib` (macOS), but npm tarballs can't carry symlinks, so the
+ * package ships a `native/pg-symlinks.json` manifest and recreates the links
+ * in its postinstall. pnpm 10 skips install scripts unless approved, so a
+ * fresh checkout may be missing them — rebuild them from the manifest here
+ * (idempotent, best effort; `node_modules/.pnpm` layouts are not used because
+ * .npmrc pins `node-linker=hoisted`).
  */
 function ensureSharedLibSymlinks(log: (m: string) => void): void {
-  if (process.platform !== "linux") return;
   // The package's `exports` map hides package.json from require.resolve, so
   // locate it by walking up from here to the nearest node_modules.
-  let libDir: string | null = null;
+  let pkgDir: string | null = null;
   for (let dir = __dirname; ; dir = path.dirname(dir)) {
-    const candidate = path.join(dir, "node_modules", "@embedded-postgres", `linux-${process.arch}`, "native", "lib");
-    if (fs.existsSync(candidate)) {
-      libDir = candidate;
+    const candidate = path.join(dir, "node_modules", "@embedded-postgres", `${process.platform}-${process.arch}`);
+    if (fs.existsSync(path.join(candidate, "native"))) {
+      pkgDir = candidate;
       break;
     }
     if (path.dirname(dir) === dir) break;
   }
-  if (!libDir) return;
-  if (!fs.existsSync(libDir)) return;
+  if (!pkgDir) return;
   let created = 0;
-  for (const file of fs.readdirSync(libDir)) {
-    const m = file.match(/^(lib[^.]+\.so\.\d+)\.\d+(?:\.\d+)*$/);
-    if (!m) continue;
-    const link = path.join(libDir, m[1]!);
-    if (fs.existsSync(link)) continue;
+  const manifest = path.join(pkgDir, "native", "pg-symlinks.json");
+  if (fs.existsSync(manifest)) {
+    let entries: { source: string; target: string }[] = [];
     try {
-      fs.symlinkSync(file, link);
-      created++;
+      entries = JSON.parse(fs.readFileSync(manifest, "utf8"));
     } catch {
-      /* read-only node_modules — the start() error below will say what's missing */
+      entries = [];
+    }
+    for (const { source, target } of entries) {
+      const link = path.join(pkgDir, target);
+      if (fs.existsSync(link) || fs.lstatSync(link, { throwIfNoEntry: false })) continue;
+      const rel = path.relative(path.dirname(link), path.join(pkgDir, source));
+      try {
+        fs.symlinkSync(rel, link);
+        created++;
+      } catch {
+        /* read-only node_modules — the start() error below will say what's missing */
+      }
+    }
+  } else {
+    // Older packages without a manifest: derive `lib*.so.N` from `lib*.so.N.M`.
+    const libDir = path.join(pkgDir, "native", "lib");
+    if (!fs.existsSync(libDir)) return;
+    for (const file of fs.readdirSync(libDir)) {
+      const m = file.match(/^(lib[^.]+\.so\.\d+)\.\d+(?:\.\d+)*$/);
+      if (!m) continue;
+      const link = path.join(libDir, m[1]!);
+      if (fs.existsSync(link)) continue;
+      try {
+        fs.symlinkSync(file, link);
+        created++;
+      } catch {
+        /* ignore */
+      }
     }
   }
   if (created > 0) log(`linked ${created} shared libraries for the embedded Postgres binaries`);
