@@ -117,6 +117,31 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   seed + idempotency, webhook replay/retry/signature (invariant 11), Stripe sync, adapter magic-link
   round trip, email template. `pnpm dev:local` = embedded PG on 5433 + migrate + seed + next dev.
   Migrations: `prisma/migrations/0_init` applied by engine-less `scripts/db-deploy.ts` (PG 18-safe).
+- **Done — Phase 1 (keys ledger)**: `src/domain/keys/` — `ledger.ts` (`grantPlanKeys(memberId, amount,
+  expiresAt, ref)`, `grantPurchasedKeys(memberId, amount, type, ref)`, `spendKeys` → `{fromPlan,
+  fromPurchased}` PLAN first then PURCHASED with one row per pool touched, `refundKeys(redemptionId)` mirrors
+  the REDEMPTION rows as CANCELLATION_REFUND (idempotent; a partial refund later = a smaller mirror),
+  `expirePlanKeys(memberId, periodEnd)` EXPIRY row for the remainder, `adjustKeys` ADMIN_ADJUSTMENT with
+  mandatory reason + `createdById`, `getBalance` (effective: expired plan pool reads 0), `getLedger` with
+  pool/type/date filters), `reconcile.ts` (`reconcileBalances({fix})` ledger sums vs `KeyBalance` cache),
+  `errors.ts` (`KeysError`, `InsufficientKeysError`). EVERY write runs in one interactive tx that upserts +
+  `SELECT … FOR UPDATE`s the member's `KeyBalance` row (serialises concurrent spends — invariant 1 is
+  tested with 10 parallel spends), writes the ledger row(s), then updates the cache. Plan pool has ONE
+  expiry date (`KeyBalance.planKeysExpireAt`); a later grant extends it; **expiry is lazy** — any write
+  that finds the date in the past writes the EXPIRY row first, so a spend after period end can never use
+  stale plan keys regardless of job timing; `refundKeys` into an ended period writes the refund AND an
+  EXPIRY row. Grants are idempotent by `ref.reference` (`KeyTransaction.reference`, unique per `type` —
+  migration `20261028120000_keys_ledger_reference`) — Phase 2 webhooks should pass e.g. `pack:{sessionId}`
+  / `sub:{subId}:{period}`. Job `scripts/jobs/reconcile-balances.ts` (`pnpm jobs:reconcile-balances`,
+  `--fix` rewrites the cache; exit 1 on mismatch). Backoffice: `/admin/members` (search email/name/
+  referral code, OPS+) → `/admin/members/[id]` (wallet pools panel `src/components/backoffice/
+  wallet-pools.tsx`, ledger table w/ pool + type filters, ADMIN-only "Adjust keys" form → server action
+  `[id]/actions.ts` zod + `requireStaff("ADMIN")`, errors/success via `?error=`/`?adjusted=`). `/app`
+  wallet now reads `getBalance`. Tests `tests/keys.test.ts` (14; `tests/fixtures.ts` builds the
+  city→producer→event→offer→redemption chain so rows can reference a redemption): invariants 1 (incl.
+  concurrency), 2, 4, cross-pool two rows, cross-pool refund, refund idempotency, refund-into-ended-period
+  expiry, lazy expiry, grant extension, reference idempotency, adjustments, filters, reconcile drift+fix.
+  Suite = 30 checks.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

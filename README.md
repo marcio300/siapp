@@ -86,7 +86,8 @@ scripts/           db-deploy, dev-local, embedded-pg helper, sync-stripe-prices
 src/app/           App Router: /sign-in, /app (member), /admin (backoffice), /api/auth, /api/webhooks/stripe
 src/lib/           db, auth (+ auth-adapter), authz guard, email (+ templates), stripe, stripe-webhook, settings
 src/components/    wordmark, key icon, backoffice primitives (table, badge, stat card, page header)
-src/domain/        business rules by module (Phase 1+)
+src/domain/        business rules by module: keys (ledger) …
+scripts/jobs/      cron entry points (reconcile-balances; more in Phase 9)
 tests/             Vitest suite + global DB setup
 ```
 
@@ -95,4 +96,7 @@ tests/             Vitest suite + global DB setup
 - **Phase 0 — done**: scaffold, auth (email magic link on `Member`), Prisma singleton, Stripe client +
   idempotent webhook, email base template, backoffice shell (dashboard, plans & packs, settings —
   read-only), seed, Stripe price sync, Vitest on real Postgres, CI.
-- Next: **Phase 1 — keys ledger** (`src/domain/keys`), see `docs/BUILD_PLAN.md`.
+- **Phase 1 — done**: keys ledger (`src/domain/keys`: grant/spend/refund/expire/adjust/balance/ledger,
+  row-locked, lazy expiry, cache reconciled by `pnpm jobs:reconcile-balances`), backoffice Members list +
+  member page (wallet pools, ledger filters, ADMIN key adjustments with a reason).
+- Next: **Phase 2 — membership and billing** (`src/domain/billing`), see `docs/BUILD_PLAN.md`.

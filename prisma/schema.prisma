@@ -344,6 +344,7 @@ model KeyTransaction {
   amount       Int // signed: grants +, spends/expiry −
   expiresAt    DateTime? // PLAN_GRANT rows: period end
   redemptionId String?
+  reference    String? // idempotency handle for grants, e.g. "pack:cs_123" — unique per type
   note         String?
   createdById  String? // StaffUser for ADMIN_ADJUSTMENT
   createdAt    DateTime           @default(now())
@@ -352,7 +353,9 @@ model KeyTransaction {
   redemption Redemption? @relation(fields: [redemptionId], references: [id])
   createdBy  StaffUser?  @relation(fields: [createdById], references: [id])
 
+  @@unique([type, reference])
   @@index([memberId, pool, createdAt])
+  @@index([memberId, createdAt])
   @@index([redemptionId])
   @@index([expiresAt])
 }

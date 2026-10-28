@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
  * page that doesn't exist yet is worse than no link, so only built pages are
  * listed. Add to NAV when the page exists.
  */
-type IconName = "dashboard" | "plans" | "settings";
+type IconName = "dashboard" | "members" | "plans" | "settings";
 
 function Icon({ name, className }: { name: IconName; className?: string }) {
   const common = {
@@ -29,6 +29,14 @@ function Icon({ name, className }: { name: IconName; className?: string }) {
           <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
           <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
           <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+        </svg>
+      );
+    case "members":
+      return (
+        <svg {...common}>
+          <circle cx="9" cy="8" r="3.5" />
+          <path d="M3.5 20c.9-3 3-4.5 5.5-4.5s4.6 1.5 5.5 4.5" />
+          <path d="M16 5.5a3.5 3.5 0 0 1 0 5.6M18.5 20c-.4-1.9-1.3-3.3-2.6-4.1" />
         </svg>
       );
     case "plans":
@@ -52,6 +60,7 @@ type NavItem = { href: string; label: string; icon: IconName };
 
 const NAV: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: "dashboard" },
+  { href: "/admin/members", label: "Members", icon: "members" },
   { href: "/admin/plans", label: "Plans & key packs", icon: "plans" },
   { href: "/admin/settings", label: "Settings", icon: "settings" },
 ];

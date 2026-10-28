@@ -16,7 +16,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "tsx scripts/db-deploy.ts",
     "db:seed": "tsx prisma/seed.ts",
-    "stripe:sync-prices": "tsx scripts/sync-stripe-prices.ts"
+    "stripe:sync-prices": "tsx scripts/sync-stripe-prices.ts",
+    "jobs:reconcile-balances": "tsx scripts/jobs/reconcile-balances.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
