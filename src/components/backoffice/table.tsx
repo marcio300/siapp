@@ -17,8 +17,12 @@ export function Th({ children, className = "", align = "left" }: { children?: Re
   return <th className={`${align === "right" ? "!text-right" : ""} ${className}`}>{children}</th>;
 }
 
-export function Td({ children, className = "", align = "left" }: { children?: ReactNode; className?: string; align?: "left" | "right" }) {
-  return <td className={`${align === "right" ? "text-right tabular-nums" : ""} ${className}`}>{children}</td>;
+export function Td({ children, className = "", align = "left", colSpan }: { children?: ReactNode; className?: string; align?: "left" | "right"; colSpan?: number }) {
+  return (
+    <td colSpan={colSpan} className={`${align === "right" ? "text-right tabular-nums" : ""} ${className}`}>
+      {children}
+    </td>
+  );
 }
 
 /** Single full-width row for "nothing here yet" states. */

@@ -71,6 +71,13 @@ export async function requireStaff(minimum: StaffRole = "DOOR"): Promise<StaffCo
   return ctx;
 }
 
+/** For member server actions: throws when not signed in. */
+export async function requireMember(): Promise<{ id: string; email: string }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new AuthzError("Not signed in");
+  return { id: session.user.id, email: session.user.email ?? "" };
+}
+
 /** For member-facing pages: the signed-in member or a redirect to sign-in. */
 export async function requireMemberPage(next = "/app"): Promise<{ id: string; email: string }> {
   const session = await auth();

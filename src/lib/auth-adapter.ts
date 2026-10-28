@@ -3,6 +3,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { generateReferralCode } from "@/lib/referral-code";
+import { ensureFreeSubscription } from "@/domain/billing/subscriptions";
 
 /**
  * The Prisma adapter is written against `prisma.user`; our NextAuth user is
@@ -34,6 +35,12 @@ export function memberAdapter(db: PrismaClient = prisma): Adapter {
           const member = await db.member.create({
             data: { ...data, referralCode: generateReferralCode() },
           });
+          // Every member starts on FREE (spec §3). Never let this break sign-in.
+          try {
+            await ensureFreeSubscription(member.id, { db });
+          } catch (e) {
+            console.error("ensureFreeSubscription failed for new member", member.id, e);
+          }
           return toAdapterUser(member);
         } catch (e) {
           if (

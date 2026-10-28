@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { runSeed } from "../prisma/seed-data";
-import { recurringFor, syncStripePrices, type StripeLike } from "../scripts/sync-stripe-prices";
+import { recurringFor, syncStripePrices, type StripeLike } from "@/domain/billing/stripe-prices";
 import { prisma, resetDatabase } from "./db";
 
 /** In-memory Stripe: products + immutable prices, like the real thing. */

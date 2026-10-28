@@ -4,8 +4,10 @@ import type { KeyPool, KeyTransactionType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireStaffPage } from "@/lib/authz";
 import { getBalance, getLedger } from "@/domain/keys";
+import { getMembership } from "@/domain/billing";
 import { formatDate, formatDateOnly } from "@/lib/format";
-import { Badge, type BadgeTone } from "@/components/backoffice/badge";
+import { Badge, statusTone, type BadgeTone } from "@/components/backoffice/badge";
+import { KeyIcon } from "@/components/key-icon";
 import { PageHeader, SectionTitle } from "@/components/backoffice/page-header";
 import { EmptyRow, Table, Td, Th } from "@/components/backoffice/table";
 import { WalletPools } from "@/components/backoffice/wallet-pools";
@@ -49,7 +51,12 @@ export default async function MemberPage({
   const pool = POOLS.includes(sp.pool as KeyPool) ? (sp.pool as KeyPool) : undefined;
   const type = TYPES.includes(sp.type as KeyTransactionType) ? (sp.type as KeyTransactionType) : undefined;
   const tz = member.city?.timezone;
-  const [balance, ledger] = await Promise.all([getBalance(member.id), getLedger(member.id, { pool, type, take: 200 })]);
+  const [balance, ledger, membership] = await Promise.all([
+    getBalance(member.id),
+    getLedger(member.id, { pool, type, take: 200 }),
+    getMembership(member.id),
+  ]);
+  const sub = membership.subscription;
 
   return (
     <>
@@ -84,8 +91,25 @@ export default async function MemberPage({
 
       <div className="grid gap-4 lg:grid-cols-3">
         <WalletPools balance={balance} timezone={tz} />
+        <div className="card p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Membership</p>
+          <p className="mt-2 font-display text-2xl">
+            {sub ? sub.plan.name : "none"}{" "}
+            {sub && <Badge tone={statusTone(sub.status)}>{sub.status.toLowerCase().replace("_", " ")}</Badge>}
+          </p>
+          {sub && (
+            <dl className="mt-3 space-y-1 text-sm text-ink-dark-muted">
+              <div className="flex justify-between"><dt>Period</dt><dd>{formatDateOnly(sub.currentPeriodStart, tz)} → {formatDateOnly(sub.currentPeriodEnd, tz)}</dd></div>
+              <div className="flex justify-between"><dt>Keys / month</dt><dd className="inline-flex items-center gap-1"><KeyIcon className="h-3.5 w-3.5 text-red" /> {membership.keysPerMonth}</dd></div>
+              {sub.nextGrantAt && <div className="flex justify-between"><dt>Next grant</dt><dd>{formatDateOnly(sub.nextGrantAt, tz)}</dd></div>}
+              {sub.cancelAtPeriodEnd && <div className="flex justify-between"><dt>Renewal</dt><dd className="text-red">cancelled at period end</dd></div>}
+              {sub.firstPaidAt && <div className="flex justify-between"><dt>First paid</dt><dd>{formatDateOnly(sub.firstPaidAt, tz)}</dd></div>}
+              <div className="flex justify-between"><dt>Stripe</dt><dd className="font-mono text-xs">{sub.stripeSubscriptionId ?? "—"}</dd></div>
+            </dl>
+          )}
+        </div>
         {staff.role === "ADMIN" && (
-          <form action={adjustKeysAction} className="card p-5 lg:col-span-2">
+          <form action={adjustKeysAction} className="card p-5 lg:col-span-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Adjust keys (ADMIN)</p>
             <p className="mt-1 text-xs text-ink-dark-muted">
               Writes an ADMIN_ADJUSTMENT row — the ledger is the truth, balances are never edited directly. Plan credits

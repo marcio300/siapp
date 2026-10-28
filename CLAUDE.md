@@ -142,6 +142,36 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   concurrency), 2, 4, cross-pool two rows, cross-pool refund, refund idempotency, refund-into-ended-period
   expiry, lazy expiry, grant extension, reference idempotency, adjustments, filters, reconcile drift+fix.
   Suite = 30 checks.
+- **Done — Phase 2 (membership + billing)**: `src/domain/billing/` — `subscriptions.ts` (`getMembership`
+  → `{subscription, tierCode, isPaid, isTourist, isRecurring, canBuyPacks, keysPerMonth}`;
+  `ensureFreeSubscription` = FREE row w/o Stripe id, created in the auth adapter's createUser (try/catch,
+  never breaks sign-in) and whenever a paid sub ends; `applyPaidPeriod` (invoice.paid: expire previous
+  remainder if renewal → upsert row by `stripeSubscriptionId` → supersede local FREE/tourist rows →
+  grant first month, ref `sub:{rowId}:{periodStartISO}`; monthly: expiresAt=periodEnd, nextGrantAt null;
+  quarterly/yearly: expiresAt=+1mo, nextGrantAt=+1mo); `linkStripeSubscription` (session.completed
+  before/after invoice — any order), `activateTouristPass` (7d, no Stripe sub, idempotent on
+  `Subscription.checkoutSessionId` — migration `20261028150000_billing_checkout_session`, firstPaidAt stays
+  null), `markPastDue`, `mirrorStripeSubscription` (plan via PlanPrice.stripePriceId, cancel flag,
+  status, period), `endStripeSubscription` (CANCELLED + expire keys NOW via `expirePlanKeys(memberId,
+  sub.currentPeriodEnd)` + ensureFree), jobs `runMonthlyGrants({now, memberId?})` (nextGrantAt ≤ now,
+  ACTIVE only; FREE rolls its own month) + `runExpirePeriods` (keys for ended periods, tourist →
+  EXPIRED + FREE)); `checkout.ts` (`ensureStripeCustomer` idempotency `customer_{memberId}`,
+  `startSubscriptionCheckout` mode subscription w/ `metadata.kind="subscription"` + `subscription_data.
+  metadata {memberId, planId}`, `startKeyPackCheckout` (refuses FREE: `canBuyPacks`), `startTouristPassCheckout`
+  (refuses when already paid; TODO Phase 3 ID-photo gate), `changeSubscriptionPlan` (retrieve item →
+  update price w/ create_prorations; optimistic planId mirror; NO grant), `setCancelAtPeriodEnd`,
+  `createPortalSession`); `webhooks.ts` `registerBillingWebhooks()` (called at module top of the webhook
+  route; tolerant extractors `invoiceSubscriptionId`/`invoiceLines`/`subscriptionPeriod` for classic +
+  2025 shapes; invoice.paid ONLY for subscription_create|subscription_cycle — subscription_update never
+  grants); `stripe-client.ts` `BillingStripe` subset + `setBillingStripeForTests`; `stripe-prices.ts`
+  (sync core moved here; `scripts/sync-stripe-prices.ts` is the CLI, `/admin/plans` "Sync to Stripe" the
+  button); `periods.ts` (`addMonths` clamps, `monthlyGrantWindow`). Jobs `pnpm jobs:monthly-grants`
+  (daily) / `pnpm jobs:expire-periods` (hourly). Member app: `/app/membership` (+ `actions.ts`:
+  choosePlan subscribe|change, cancel/resume, tourist, portal — BillingError → `?error=`, anything else →
+  generic notice + console.error), `/app/wallet` (+ buyPack), `/app/billing/return`, `src/components/
+  member-nav.tsx` `MemberHeader`/`Notice`; `requireMember()` in authz for actions. Backoffice `/admin/plans`
+  ADMIN inline edits (tier keys, plan € + tourist keys, pack keys/€/on-sale) + sync action; member page
+  membership card. Tests `tests/billing.test.ts` (13 → suite 43): fake Stripe + synthetic events.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

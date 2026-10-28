@@ -317,6 +317,7 @@ model Subscription {
   memberId             String
   planId               String
   stripeSubscriptionId String?            @unique // null for FREE, TOURIST_WEEK and partner promo periods
+  checkoutSessionId    String?            @unique // Stripe Checkout Session that created it (one-off tourist pass idempotency)
   status               SubscriptionStatus @default(ACTIVE)
   currentPeriodStart   DateTime
   currentPeriodEnd     DateTime

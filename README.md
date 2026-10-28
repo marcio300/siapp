@@ -74,9 +74,14 @@ pnpm stripe:sync-prices -- --dry-run
 ```
 
 Stripe prices are immutable: a changed amount creates a new Price and archives the old one. €0 plans
-(FREE) get no Stripe objects. Register the webhook at `{APP_URL}/api/webhooks/stripe`; locally use
+(FREE) get no Stripe objects. The same sync runs from the backoffice ("Sync to Stripe" on Plans).
+
+Register the webhook at `{APP_URL}/api/webhooks/stripe` for `checkout.session.completed`,
+`checkout.session.async_payment_succeeded`, `invoice.paid`, `invoice.payment_failed`,
+`customer.subscription.updated`, `customer.subscription.deleted`; locally use
 `stripe listen --forward-to localhost:3000/api/webhooks/stripe`. Every delivery is recorded in
-`StripeEvent` and replays are no-ops (`src/lib/stripe-webhook.ts`).
+`StripeEvent` and replays are no-ops (`src/lib/stripe-webhook.ts`); purchases are fulfilled ONLY by the
+webhook, never on the redirect back.
 
 ## Layout
 
@@ -87,7 +92,7 @@ src/app/           App Router: /sign-in, /app (member), /admin (backoffice), /ap
 src/lib/           db, auth (+ auth-adapter), authz guard, email (+ templates), stripe, stripe-webhook, settings
 src/components/    wordmark, key icon, backoffice primitives (table, badge, stat card, page header)
 src/domain/        business rules by module: keys (ledger) …
-scripts/jobs/      cron entry points (reconcile-balances; more in Phase 9)
+scripts/jobs/      cron entry points (reconcile-balances, monthly-grants, expire-periods; wired in Phase 9)
 tests/             Vitest suite + global DB setup
 ```
 
@@ -99,4 +104,9 @@ tests/             Vitest suite + global DB setup
 - **Phase 1 — done**: keys ledger (`src/domain/keys`: grant/spend/refund/expire/adjust/balance/ledger,
   row-locked, lazy expiry, cache reconciled by `pnpm jobs:reconcile-balances`), backoffice Members list +
   member page (wallet pools, ledger filters, ADMIN key adjustments with a reason).
-- Next: **Phase 2 — membership and billing** (`src/domain/billing`), see `docs/BUILD_PLAN.md`.
+- **Phase 2 — done**: membership and billing (`src/domain/billing`: Stripe Checkout for plans, packs
+  and the tourist pass, webhook-only fulfilment, FREE tier as a real subscription, monthly grants on
+  quarterly/yearly plans, plan change/cancel), member Membership + Wallet screens, editable Plans & key
+  packs with "Sync to Stripe". Jobs: `pnpm jobs:monthly-grants`, `pnpm jobs:expire-periods`.
+- Next: **Phase 3 — identity, onboarding, fraud foundation**, see `docs/BUILD_PLAN.md`.
+- The human-readable record of every phase (decisions, deviations, gotchas) is `docs/BUILD_LOG.md`.

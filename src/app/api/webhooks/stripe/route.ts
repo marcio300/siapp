@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { handleStripeEvent, type StripeWebhookEvent } from "@/lib/stripe-webhook";
+import { registerBillingWebhooks } from "@/domain/billing/webhooks";
+
+registerBillingWebhooks();
 
 /**
  * Stripe webhook endpoint (ported from EventOS). Configure in Stripe →
