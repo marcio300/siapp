@@ -50,17 +50,14 @@ export async function evaluate(
   const fired: FiredRule[] = [];
   const rejected: FiredRule[] = [];
 
-  const [member, offer] = await Promise.all([
-    db.member.findUniqueOrThrow({ where: { id: memberId } }),
-    db.offer.findUniqueOrThrow({ where: { id: offerId }, include: { event: true } }),
-  ]);
-  const [deviceMax, velocityHourMax, velocityPrivateMax, overlapHours, cardMax] = await Promise.all([
-    getSetting("device_max_accounts"),
-    getSetting("velocity_first_hour_max"),
-    getSetting("velocity_private_sale_first_day_max"),
-    getSetting("overlap_tolerance_hours"),
-    getSetting("same_card_max_accounts"),
-  ]);
+  const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
+  const offer = await db.offer.findUniqueOrThrow({ where: { id: offerId }, include: { event: true } });
+  // Sequential + on `db`: inside a transaction this must not fan out to extra pool connections.
+  const deviceMax = await getSetting("device_max_accounts", db);
+  const velocityHourMax = await getSetting("velocity_first_hour_max", db);
+  const velocityPrivateMax = await getSetting("velocity_private_sale_first_day_max", db);
+  const overlapHours = await getSetting("overlap_tolerance_hours", db);
+  const cardMax = await getSetting("same_card_max_accounts", db);
   const accountAgeMs = now.getTime() - member.createdAt.getTime();
 
   // DEVICE_MAX_ACCOUNTS

@@ -29,13 +29,20 @@ export interface WebhookOutcome {
   note: string;
 }
 
-export type StripeEventHandler = (event: StripeWebhookEvent) => Promise<string | void>;
+/** Return a note, or null/undefined when the event wasn't yours (another handler may own it). */
+export type StripeEventHandler = (event: StripeWebhookEvent) => Promise<string | void | null>;
 
-/** Handlers by event type. Phase 2 registers billing handlers here. */
-const handlers: Record<string, StripeEventHandler> = {};
+/** Handlers by event type — several domains may listen to the same type (billing + redemptions both use checkout.session.completed). */
+const handlers: Record<string, StripeEventHandler[]> = {};
 
 export function registerStripeHandler(type: string, handler: StripeEventHandler): void {
-  handlers[type] = handler;
+  (handlers[type] ??= []).push(handler);
+}
+
+/** Test seam: drop every registered handler for a type. */
+export function clearStripeHandlersForTests(type: string): void {
+  if (process.env.NODE_ENV === "production") return;
+  delete handlers[type];
 }
 
 export async function handleStripeEvent(event: StripeWebhookEvent): Promise<WebhookOutcome> {
@@ -59,8 +66,8 @@ export async function handleStripeEvent(event: StripeWebhookEvent): Promise<Webh
 
   // 3. Dispatch. Unknown types are marked processed so a replay of them is
   //    also a no-op (and so the table doubles as a delivery log).
-  const handler = handlers[event.type];
-  if (!handler) {
+  const typeHandlers = handlers[event.type];
+  if (!typeHandlers || typeHandlers.length === 0) {
     await prisma.stripeEvent.update({
       where: { id: event.id },
       data: { processedAt: new Date(), error: null },
@@ -69,7 +76,12 @@ export async function handleStripeEvent(event: StripeWebhookEvent): Promise<Webh
   }
 
   try {
-    const note = (await handler(event)) ?? "ok";
+    const notes: string[] = [];
+    for (const handler of typeHandlers) {
+      const note = await handler(event);
+      if (note) notes.push(note);
+    }
+    const note = notes.length > 0 ? notes.join(" | ") : "ok";
     await prisma.stripeEvent.update({
       where: { id: event.id },
       data: { processedAt: new Date(), error: null },

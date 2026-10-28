@@ -5,66 +5,93 @@ import { prisma } from "@/lib/db";
 import { getBalance } from "@/domain/keys";
 import { getMembership } from "@/domain/billing";
 import { formatDateOnly } from "@/lib/format";
+import { utcToLocal } from "@/lib/time";
 import { KeyIcon } from "@/components/key-icon";
 import { MemberHeader } from "@/components/member-nav";
+import { EventCard } from "@/components/event-card";
 
-/** Member home. Discovery (this week in your city) arrives in Phase 5. */
-export default async function MemberHome() {
-  const member = await requireOnboardedMember("/app");
+const DAY = 86_400_000;
+const TYPE_FILTER: Record<string, string> = { free: "FREE_TICKET", discount: "DISCOUNT_TICKET", guestlist: "GUESTLIST" };
+
+/** Member home: this week in your city (spec §15). */
+export default async function MemberHome({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const member = await requireOnboardedMember();
+  const sp = await searchParams;
+  const now = new Date();
+  const tz = member.city?.timezone ?? "Europe/Lisbon";
   const [balance, membership] = await Promise.all([getBalance(member.id), getMembership(member.id)]);
+
+  const horizon = new Date(now.getTime() + 7 * DAY);
+  const events = await prisma.event.findMany({
+    where: {
+      status: "PUBLISHED",
+      ...(member.cityId ? { cityId: member.cityId } : {}),
+      endsAt: { gte: now },
+      startsAt: { lte: horizon },
+      ...(sp.tag ? { tags: { has: sp.tag } } : {}),
+      ...(sp.type && TYPE_FILTER[sp.type] ? { offers: { some: { type: TYPE_FILTER[sp.type] as never } } } : {}),
+    },
+    include: { offers: { orderBy: { sortOrder: "asc" } } },
+    orderBy: { startsAt: "asc" },
+  });
+  const byDay = events.filter((e) => !sp.day || utcToLocal(e.startsAt, tz).date === sp.day);
+  const days = [...new Set(events.map((e) => utcToLocal(e.startsAt, tz).date))];
+  const tags = [...new Set(events.flatMap((e) => e.tags))].slice(0, 12);
 
   async function doSignOut() {
     "use server";
     await signOut({ redirectTo: "/sign-in" });
   }
+  const link = (over: Record<string, string | undefined>) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries({ day: sp.day, type: sp.type, tag: sp.tag, ...over })) if (v) q.set(k, v);
+    const s = q.toString();
+    return s ? `/app?${s}` : "/app";
+  };
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-6 px-6 py-8">
       <MemberHeader current="/app" signOut={doSignOut} />
 
-      <Link href="/app/wallet" className="night-card block p-6 transition hover:border-red-soft">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Wallet</p>
-        <p className="mt-2 flex items-baseline gap-2 font-display text-5xl">
-          <KeyIcon className="h-8 w-8 text-red" />
-          {balance.total}
-        </p>
-        <p className="mt-2 font-serif text-base italic text-ink-muted">
-          {balance.planKeys} plan keys
-          {balance.planKeysExpireAt ? ` expire ${formatDateOnly(balance.planKeysExpireAt, member.city?.timezone)}` : ""} ·{" "}
-          {balance.purchasedKeys} purchased
-        </p>
+      <Link href="/app/wallet" className="flex items-center justify-between rounded-2xl border border-line bg-bg-elevated px-4 py-3">
+        <span className="flex items-center gap-2 font-display text-2xl"><KeyIcon className="h-5 w-5 text-red" />{balance.total}</span>
+        <span className="text-xs text-ink-muted">
+          {balance.planKeysExpireAt ? `${balance.planKeys} expire ${formatDateOnly(balance.planKeysExpireAt, tz)} · ` : ""}
+          {membership.tierCode.toLowerCase()}
+        </span>
       </Link>
 
       <section>
         <h1 className="font-display text-3xl leading-tight">
-          you&apos;re in<span className="text-red">.</span>
+          this week in {member.city?.name.toLowerCase() ?? "town"}<span className="text-red">.</span>
         </h1>
-        <p className="mt-2 font-serif text-xl italic text-ink-muted">
-          sorry, nothing tonight — the calendar opens in a later phase.
-        </p>
-        <dl className="mt-6 space-y-2 text-sm text-ink-muted">
-          <div className="flex justify-between">
-            <dt>Membership</dt>
-            <dd className="text-ink">
-              <Link href="/app/membership" className="hover:text-red">
-                {membership.tierCode.toLowerCase()}
-                {membership.isTourist ? " · tourist week" : ""}
-              </Link>
-            </dd>
-          </div>
-          <div className="flex justify-between">
-            <dt>Signed in as</dt>
-            <dd className="text-ink">{member.email}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt>Home city</dt>
-            <dd className="text-ink">{member.city?.name ?? "not chosen yet"}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt>Referral code</dt>
-            <dd className="font-mono text-ink">{member.referralCode}</dd>
-          </div>
-        </dl>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+          <Link href={link({ day: undefined })} className={`shrink-0 rounded-full border px-3 py-1 text-sm ${!sp.day ? "border-red bg-red/10" : "border-line text-ink-muted"}`}>all days</Link>
+          {days.map((d) => {
+            const date = new Date(`${d}T12:00:00Z`);
+            const label = d === utcToLocal(now, tz).date ? "today" : d === utcToLocal(new Date(now.getTime() + DAY), tz).date ? "tomorrow" : date.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" }).toLowerCase();
+            return (
+              <Link key={d} href={link({ day: d })} className={`shrink-0 rounded-full border px-3 py-1 text-sm ${sp.day === d ? "border-red bg-red/10" : "border-line text-ink-muted"}`}>{label}</Link>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 text-xs [scrollbar-width:none]">
+          {[["free", "free entry"], ["discount", "discounted"], ["guestlist", "guest list"]].map(([k, l]) => (
+            <Link key={k} href={link({ type: sp.type === k ? undefined : k })} className={`shrink-0 rounded-full border px-2.5 py-1 ${sp.type === k ? "border-red bg-red/10" : "border-line text-ink-muted"}`}>{l}</Link>
+          ))}
+          {tags.map((t) => (
+            <Link key={t} href={link({ tag: sp.tag === t ? undefined : t })} className={`shrink-0 rounded-full border px-2.5 py-1 ${sp.tag === t ? "border-red bg-red/10" : "border-line text-ink-muted"}`}>#{t}</Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        {byDay.length === 0 && (
+          <p className="font-serif text-xl italic text-ink-muted">sorry, nothing {sp.day ? "that day" : "this week"} — check back soon.</p>
+        )}
+        {byDay.map((e) => (
+          <EventCard key={e.id} event={e} offers={e.offers} tierCode={membership.tierCode} timezone={tz} now={now} />
+        ))}
       </section>
     </main>
   );

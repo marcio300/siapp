@@ -21,6 +21,9 @@ export interface BillingStripe {
   billingPortal: {
     sessions: { create(params: Stripe.BillingPortal.SessionCreateParams): Promise<{ url: string }> };
   };
+  refunds: {
+    create(params: Stripe.RefundCreateParams, options?: Stripe.RequestOptions): Promise<{ id: string }>;
+  };
 }
 
 let override: BillingStripe | null = null;

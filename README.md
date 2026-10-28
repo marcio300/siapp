@@ -93,8 +93,9 @@ scripts/           db-deploy, dev-local, embedded-pg helper, sync-stripe-prices
 src/app/           App Router: /sign-in, /app (member), /admin (backoffice), /api/auth, /api/webhooks/stripe
 src/lib/           db, auth (+ auth-adapter), authz guard, email (+ templates), stripe, stripe-webhook, settings
 src/components/    wordmark, key icon, backoffice primitives (table, badge, stat card, page header)
-src/domain/        business rules by module: keys, billing, identity, fraud, producers, events …
-scripts/jobs/      cron entry points (reconcile-balances, monthly-grants, expire-periods, purge-id-photos; wired in Phase 9)
+src/domain/        business rules by module: keys, billing, identity, fraud, producers, events, redemption
+scripts/jobs/      cron entry points (reconcile-balances, monthly-grants, expire-periods, purge-id-photos,
+                   mark-no-shows, expire-pending-payments, expire-waitlist-claims; wired in Phase 9)
 tests/             Vitest suite + global DB setup
 ```
 
@@ -117,5 +118,9 @@ tests/             Vitest suite + global DB setup
 - **Phase 4 — done**: producers (encrypted payout details), events with status flow, duplicate and
   per-event scanner code + one-time PIN, nested offers with every spec §6 field (capped / time-window
   allocation in the city timezone, private sale, +1, overrides), filtered list with counters.
-- Next: **Phase 5 — member app: discovery and redemption**, see `docs/BUILD_PLAN.md`.
+- **Phase 5 — done**: redemption in one locked transaction (eligibility, fraud, keys, ticket),
+  discounted tickets via Stripe Checkout + webhook, cancellation window with key + cash refunds,
+  waitlist with timed claims, no-show job; member home / event / redeem sheet / tickets with QR.
+  Jobs: `pnpm jobs:mark-no-shows`, `pnpm jobs:expire-pending-payments`, `pnpm jobs:expire-waitlist-claims`.
+- Next: **Phase 6 — scanner**, see `docs/BUILD_PLAN.md`.
 - The human-readable record of every phase (decisions, deviations, gotchas) is `docs/BUILD_LOG.md`.

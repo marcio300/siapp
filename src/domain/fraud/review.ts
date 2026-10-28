@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
+import { denyHeldRedemption, releaseHeldRedemption } from "@/domain/redemption/lifecycle";
 
 /**
  * Backoffice fraud queue actions. Owner decision 2026-10-28: ONE approval
@@ -31,13 +32,13 @@ export async function reviewFlag(
   });
   if (flag.redemptionId) {
     if (decision === "DENIED") {
-      await db.redemption.updateMany({ where: { id: flag.redemptionId, status: "HELD" }, data: { status: "DENIED" } });
+      await denyHeldRedemption(flag.redemptionId, { db, now });
     } else {
       await db.fraudFlag.updateMany({
         where: { redemptionId: flag.redemptionId, status: "OPEN" },
         data: { status: "APPROVED", reviewedById: input.staffId, reviewedAt: now, reviewNote: `approved with ${flag.rule} flag ${flag.id}` },
       });
-      await db.redemption.updateMany({ where: { id: flag.redemptionId, status: "HELD" }, data: { status: "ACTIVE" } });
+      await releaseHeldRedemption(flag.redemptionId, { db, now });
     }
   }
   return updated;
@@ -54,7 +55,9 @@ export async function banMember(memberId: string, input: { staffId: string; reas
     where: { memberId, status: "OPEN" },
     data: { status: "DENIED", reviewedById: input.staffId, reviewedAt: now, reviewNote: `banned: ${reason}` },
   });
-  await db.redemption.updateMany({ where: { memberId, status: "HELD" }, data: { status: "DENIED" } });
+  for (const held of await db.redemption.findMany({ where: { memberId, status: "HELD" }, select: { id: true } })) {
+    await denyHeldRedemption(held.id, { db, now });
+  }
   await db.session.deleteMany({ where: { userId: memberId } });
 }
 

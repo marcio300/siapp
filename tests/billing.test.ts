@@ -57,6 +57,7 @@ function fakeStripe() {
       },
     },
     billingPortal: { sessions: { async create() { return { url: "https://portal.stripe.test" }; } } },
+    refunds: { async create() { return { id: "re_fake" }; } },
   };
   return { stripe, calls };
 }

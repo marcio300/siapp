@@ -3,6 +3,7 @@ import { Wordmark } from "@/components/wordmark";
 
 const LINKS = [
   { href: "/app", label: "Tonight" },
+  { href: "/app/tickets", label: "Tickets" },
   { href: "/app/wallet", label: "Wallet" },
   { href: "/app/membership", label: "Membership" },
   { href: "/app/profile", label: "Profile" },

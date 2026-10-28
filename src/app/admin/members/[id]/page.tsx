@@ -62,6 +62,7 @@ export default async function MemberPage({
     deviceOverlap(member.id),
     prisma.fraudFlag.findMany({ where: { memberId: member.id }, orderBy: { createdAt: "desc" }, take: 50, include: { reviewedBy: { select: { name: true, email: true } } } }),
   ]);
+  const tickets = await prisma.redemption.findMany({ where: { memberId: member.id }, include: { event: { select: { id: true, title: true, startsAt: true } }, offer: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 50 });
   const backPath = `/admin/members/${member.id}`;
   const sub = membership.subscription;
 
@@ -286,6 +287,33 @@ export default async function MemberPage({
             </tbody>
           </Table>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <SectionTitle>Tickets · {tickets.length}</SectionTitle>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Event</Th>
+              <Th>Offer</Th>
+              <Th>Status</Th>
+              <Th align="right">Keys</Th>
+              <Th>+1</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {tickets.length === 0 && <EmptyRow colSpan={5}>No tickets yet.</EmptyRow>}
+            {tickets.map((t) => (
+              <tr key={t.id}>
+                <Td><Link href={`/admin/events/${t.event.id}`} className="hover:text-red">{t.event.title}</Link><div className="text-xs text-ink-dark-muted">{formatDate(t.event.startsAt, tz)}</div></Td>
+                <Td>{t.offer.name}</Td>
+                <Td><Badge tone={statusTone(t.status)}>{t.status.toLowerCase().replace("_", " ")}</Badge></Td>
+                <Td align="right">{t.keyCost}</Td>
+                <Td className="text-ink-dark-muted">{t.plusOneName ?? "—"}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
       </div>
 
       <div className="mt-8 flex flex-wrap items-end justify-between gap-3">

@@ -22,6 +22,16 @@ import { InsufficientKeysError, KeysError } from "./errors";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
+/**
+ * Run `fn` in a transaction. Given a PrismaClient, opens one; given a
+ * TransactionClient (the caller already holds a transaction — e.g. the
+ * redemption flow, which locks the offer first), joins it. The row lock on
+ * KeyBalance is taken either way.
+ */
+function inTx<T>(db: Db, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return "$transaction" in db ? (db as PrismaClient).$transaction(fn) : fn(db as Prisma.TransactionClient);
+}
+
 export interface Balance {
   planKeys: number;
   purchasedKeys: number;
@@ -118,7 +128,7 @@ async function findByReference(db: Db, type: KeyTransactionType, reference: stri
 }
 
 export interface LedgerOptions {
-  db?: PrismaClient;
+  db?: Db;
   now?: Date;
 }
 
@@ -141,7 +151,7 @@ export async function grantPlanKeys(
   const existing = await findByReference(db, "PLAN_GRANT", ref.reference);
   if (existing) return existing;
 
-  return db.$transaction(async (tx) => {
+  return inTx(db, async (tx) => {
     const balance = await lockBalance(tx, memberId, now);
     const row = await tx.keyTransaction.create({
       data: {
@@ -177,7 +187,7 @@ export async function grantPurchasedKeys(
   const existing = await findByReference(db, type, ref.reference);
   if (existing) return existing;
 
-  return db.$transaction(async (tx) => {
+  return inTx(db, async (tx) => {
     const balance = await lockBalance(tx, memberId, now);
     const row = await tx.keyTransaction.create({
       data: {
@@ -211,7 +221,7 @@ export async function spendKeys(
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
 
-  return db.$transaction(async (tx) => {
+  return inTx(db, async (tx) => {
     const balance = await lockBalance(tx, memberId, now);
     const available = balance.planKeys + balance.purchasedKeys;
     if (available < amount) throw new InsufficientKeysError(amount, available);
@@ -250,7 +260,7 @@ export async function refundKeys(
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
 
-  return db.$transaction(async (tx) => {
+  return inTx(db, async (tx) => {
     const debits = await tx.keyTransaction.findMany({ where: { redemptionId, type: "REDEMPTION" } });
     if (debits.length === 0) throw new KeysError(`Redemption ${redemptionId} has no key debits`);
     const memberId = debits[0]!.memberId;
@@ -309,7 +319,7 @@ export async function expirePlanKeys(
 ): Promise<{ expired: number }> {
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
-  return db.$transaction(async (tx) => {
+  return inTx(db, async (tx) => {
     // The lazy rule in lockBalance already expires a pool whose date passed;
     // report that as this call's work.
     const balance = await lockBalance(tx, memberId, now);
@@ -338,7 +348,7 @@ export async function adjustKeys(
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
 
-  return db.$transaction(async (tx) => {
+  return inTx(db, async (tx) => {
     const balance = await lockBalance(tx, memberId, now);
     const current = pool === "PLAN" ? balance.planKeys : balance.purchasedKeys;
     if (current + amount < 0) throw new InsufficientKeysError(-amount, current);

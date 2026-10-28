@@ -9,6 +9,7 @@ import { utcToLocal } from "@/lib/time";
 import { Badge, statusTone } from "@/components/backoffice/badge";
 import { PageHeader, SectionTitle } from "@/components/backoffice/page-header";
 import { KeyIcon } from "@/components/key-icon";
+import { EmptyRow, Table, Td, Th } from "@/components/backoffice/table";
 import { addOfferAction, deleteOfferAction, duplicateEventAction, regeneratePinAction, setEventStatusAction, updateEventAction, updateOfferAction } from "../actions";
 import { EventForm } from "../event-form";
 import { OfferForm } from "../offer-form";
@@ -26,6 +27,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     getSetting("cancellation_window_hours"),
   ]);
   const closed = event.status === "FINISHED" || event.status === "CANCELLED";
+  const redemptions = await prisma.redemption.findMany({ where: { eventId: event.id }, include: { member: { select: { id: true, name: true, email: true } }, offer: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 300 });
 
   return (
     <>
@@ -136,11 +138,37 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           })}
         </div>
         {!closed && (
-          <div className="card mt-4 p-5">
+          <div className="card mt-4 p-5" id="add-offer">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Add offer</p>
             <OfferForm eventId={event.id} timezone={tz} action={addOfferAction} submitLabel="Add offer" cancellationDefault={cancellationDefault} />
           </div>
         )}
+      </div>
+      <div className="mt-8">
+        <SectionTitle>Redemptions · {redemptions.length}</SectionTitle>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Member</Th>
+              <Th>Offer</Th>
+              <Th>Status</Th>
+              <Th>+1</Th>
+              <Th>When</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {redemptions.length === 0 && <EmptyRow colSpan={5}>No redemptions yet.</EmptyRow>}
+            {redemptions.map((r) => (
+              <tr key={r.id}>
+                <Td><Link href={`/admin/members/${r.member.id}`} className="hover:text-red">{r.member.name ?? r.member.email}</Link></Td>
+                <Td>{r.offer.name}</Td>
+                <Td><Badge tone={statusTone(r.status)}>{r.status.toLowerCase().replace("_", " ")}</Badge></Td>
+                <Td className="text-ink-dark-muted">{r.plusOneName ?? "—"}</Td>
+                <Td className="whitespace-nowrap text-ink-dark-muted">{formatDate(r.createdAt, tz)}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
       </div>
     </>
   );

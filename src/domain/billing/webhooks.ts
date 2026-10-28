@@ -76,12 +76,13 @@ async function memberIdForCustomer(customer: unknown): Promise<string | null> {
   return row?.memberId ?? null;
 }
 
-async function handleCheckoutCompleted(event: StripeWebhookEvent): Promise<string> {
+async function handleCheckoutCompleted(event: StripeWebhookEvent): Promise<string | null> {
   const session = event.data.object as Obj;
   const meta = (obj(session.metadata) ?? {}) as Record<string, string>;
   const kind = meta.kind;
   const memberId = meta.memberId ?? (await memberIdForCustomer(session.customer));
   if (!kind || !memberId) return `ignored session ${session.id}: no SIAPP metadata`;
+  if (kind === "redemption") return null; // owned by src/domain/redemption/webhooks.ts
 
   if (kind === "subscription") {
     const stripeSubscriptionId = refId(session.subscription);

@@ -17,6 +17,7 @@ import {
   type EventInput,
   type OfferInput,
 } from "@/domain/events";
+import { refundEventRedemptions } from "@/domain/redemption/lifecycle";
 
 function eventInput(fd: FormData): EventInput {
   return {
@@ -98,6 +99,8 @@ export async function setEventStatusAction(fd: FormData): Promise<void> {
   } catch (e) {
     fail(e, `/admin/events/${id}`);
   }
+  // Cancelling an event refunds every live redemption (keys + cash) and closes its waitlists.
+  if (status === "CANCELLED") await refundEventRedemptions(id);
   redirect(`/admin/events/${id}?status=${status.toLowerCase()}`);
 }
 

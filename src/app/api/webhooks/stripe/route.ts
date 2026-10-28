@@ -3,9 +3,11 @@ import Stripe from "stripe";
 import { handleStripeEvent, type StripeWebhookEvent } from "@/lib/stripe-webhook";
 import { registerBillingWebhooks } from "@/domain/billing/webhooks";
 import { registerFraudWebhooks } from "@/domain/fraud/cards";
+import { registerRedemptionWebhooks } from "@/domain/redemption/webhooks";
 
 registerBillingWebhooks();
 registerFraudWebhooks();
+registerRedemptionWebhooks();
 
 /**
  * Stripe webhook endpoint (ported from EventOS). Configure in Stripe →

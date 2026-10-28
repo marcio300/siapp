@@ -114,7 +114,7 @@ describe("identity", () => {
 
     it("ID photo: stored encrypted, readable by staff, gates the tourist pass, purged after 30 days", async () => {
       const m = await createMember();
-      const fakeStripe = { customers: { create: async () => ({ id: "cus_t" }) }, checkout: { sessions: { create: async () => ({ id: "cs_t", url: "https://x" }) } }, subscriptions: { retrieve: async () => ({ id: "", items: { data: [] } }), update: async () => ({}) }, billingPortal: { sessions: { create: async () => ({ url: "" }) } } } as BillingStripe;
+      const fakeStripe = { customers: { create: async () => ({ id: "cus_t" }) }, checkout: { sessions: { create: async () => ({ id: "cs_t", url: "https://x" }) } }, subscriptions: { retrieve: async () => ({ id: "", items: { data: [] } }), update: async () => ({}) }, billingPortal: { sessions: { create: async () => ({ url: "" }) } }, refunds: { create: async () => ({ id: "re_x" }) } } as BillingStripe;
       setBillingStripeForTests(fakeStripe);
       const touristPrice = await prisma.planPrice.findFirstOrThrow({ where: { plan: { period: "TOURIST_WEEK" } } });
       await prisma.planPrice.update({ where: { id: touristPrice.id }, data: { stripePriceId: "price_tourist" } });

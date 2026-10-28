@@ -490,6 +490,7 @@ model Redemption {
   plusOneName           String?
   cashCents             Int              @default(0) // discounted ticket (+ plus-one cash)
   stripePaymentIntentId String?          @unique
+  stripeCheckoutSessionId String?        @unique // discounted tickets pay through Checkout; webhook completes
   stripeRefundId        String?
   paymentExpiresAt      DateTime? // PENDING_PAYMENT hold expiry
   cancelDeadlineAt      DateTime // startsAt − cancellation window

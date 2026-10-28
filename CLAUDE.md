@@ -224,6 +224,41 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   w/ shift, scanner card + one-time `?pin=` banner, offers as `<details>` w/ edit form + add form);
   `src/lib/forms.ts` FormData helpers; actions in `src/app/admin/events/actions.ts` (query-before-hash
   `fail`). Tests `tests/time.test.ts` (6) + `tests/events.test.ts` (5) → suite 68.
+- **Done — Phase 5 (member app: discovery + redemption)**: `src/domain/redemption/` — `errors.ts`
+  (`RedemptionError{reason, detail}`, `RefusalReason` union), `eligibility.ts` (`checkEligibility(input)` pure
+  — order: banned/verified → event PUBLISHED + redeemFrom/Until → FREE needs `openToFree` → private sale
+  (`privateSaleOpensAt` null = never opens) → +1 allowed → capacity (SOLD_OUT; `WAITLIST_ONLY` when live
+  claims of others reserve the rest) → maxPerMember → keys; `offerCost(offer, plusOne)` → `{keyCost,
+  cashCents}` with `discountedPriceCents` round; `explainEligibility` for pages; `reservedSeats`;
+  `cancellationWindowHours(offer, db)`; `COUNTING` statuses), `tickets.ts` (`newQrPayload` 32 hex like
+  EventOS's opaque token, `signQrPayload` HMAC(AUTH_SECRET) base64url stored in `Ticket.signature`,
+  `issueTicket`), `redeem.ts` (`redeem()` ONE tx READ COMMITTED + `SELECT … FOR UPDATE` on Offer, maxWait/
+  timeout 30 s, retries on deadlock; ALL reads on `tx` incl. `getMembership`/`getBalance`/`getSetting(key,
+  tx)`/`evaluate({db: tx})` — a global-client read inside the tx needs a 2nd pool connection and DEADLOCKS
+  the pool under a burst; keys spent at creation for every outcome; HELD links the member's open flags to
+  the redemption; NOTIFIED waitlist entry → CLAIMED), `lifecycle.ts` (`startRedemptionPayment` Checkout
+  mode payment `metadata.kind="redemption"` idempotency `redemption_pay_{id}` → `Redemption.
+  stripeCheckoutSessionId` (migration `20261028210000_redemption_checkout_session`); `completeRedemptionPayment`
+  updateMany PENDING→ACTIVE + ticket + email, late money refunded; `releaseHeldRedemption` (cash due →
+  PENDING_PAYMENT w/ ≥24 h window, else ACTIVE + ticket), `denyHeldRedemption` (keys back, waitlist);
+  `cancelRedemption(id, memberId|null)` (ACTIVE only until `cancelDeadlineAt`; PENDING/HELD any time; refundKeys
+  + Stripe refund `refund_{id}`; waitlist); `expirePendingPayments`, `markNoShows` (ACTIVE→NO_SHOW,
+  AttendanceStats.noShows++, pending→EXPIRED, waitlists EXPIRED, event FINISHED), `refundEventRedemptions`,
+  waitlist `joinWaitlist`/`leaveWaitlist`/`notifyNextOnWaitlist` (`waitlist_claim_minutes`, email)/
+  `expireWaitlistClaims`), `notify.ts` (confirmation/cancellation/waitlist emails, best-effort),
+  `webhooks.ts` (`registerRedemptionWebhooks` on checkout.session.completed/async — `src/lib/stripe-webhook`
+  now holds MANY handlers per type (array; handler returns null = not mine; notes joined); billing's
+  handler returns null for kind "redemption"). Ledger `LedgerOptions.db` accepts a TransactionClient
+  (`inTx` joins); billing `Opts.db` too; `getSetting(key, db?)`. fraud/review.ts approve → `releaseHeld
+  Redemption`, deny/ban → `denyHeldRedemption`. Admin cancel-event action → `refundEventRedemptions`.
+  Member app: `/app` (7-day window in member city, `?day=&type=&tag=`, `src/components/event-card.tsx`
+  `eventTeaser`/`hoursUntilOpen`), `/app/events/[id]` (per-offer `checkEligibility` + waitlist actions in
+  `src/app/app/events/actions.ts`), `/app/events/[id]/redeem/[offerId]` (sheet → `redeemAction`: PENDING →
+  Checkout URL, HELD → `?held=1`, ACTIVE → `?new=1`), `/app/tickets` + `/app/tickets/[id]` (QR via `qrcode`
+  toDataURL on white, cancel/pay actions in `src/app/app/tickets/actions.ts`); nav gained Tickets.
+  Backoffice: redemptions table on event page, tickets on member page. Jobs `pnpm jobs:mark-no-shows`
+  (hourly) / `jobs:expire-pending-payments` (5 min) / `jobs:expire-waitlist-claims` (5 min). Tests
+  `tests/redemption.test.ts` (11 → suite 79).
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

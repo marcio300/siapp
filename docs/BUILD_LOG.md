@@ -274,3 +274,70 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
   server never sees the parameter.
 - Browser tests that wait for a URL already matching the current one resolve immediately; navigate
   to a clean URL before each submission.
+
+## Phase 5 — Member app: discovery and redemption (2026-10-28)
+
+**Shipped**
+
+- `src/domain/redemption`: `redeem(memberId, offerId, { plusOneName })` in ONE transaction that locks
+  the offer row (`SELECT … FOR UPDATE`), runs the spec §7 checks in order with fresh counts, runs
+  `fraud.evaluate`, spends the keys (the ledger joins the transaction), creates the redemption and,
+  when immediately ACTIVE, its ticket. Outcomes: ACTIVE (ticket + email), PENDING_PAYMENT (cash due:
+  Stripe Checkout, the webhook completes it, hold expires after `pending_payment_minutes`), HELD
+  (fraud review; counts against capacity). Typed refusal reasons feed plain-language copy.
+- Tickets in the EventOS format: an opaque 32-hex QR token resolved server-side, plus a stored HMAC
+  signature for Phase 6's offline mode; member name, selfie snapshot, +1 name.
+- Cancellation honouring the window (per-offer override → global 24 h): keys back to their pools,
+  cash refunded through Stripe, seat offered to the waitlist. Pending and held tickets cancel any time.
+- Waitlist on capped offers: join when full, the first in line is notified when a seat frees and holds
+  a reservation for `waitlist_claim_minutes` (others see "reserved for the waitlist"), expiry passes the
+  seat on. Redeeming while notified claims it.
+- Jobs: `mark-no-shows` (hourly: ACTIVE → NO_SHOW after the event ends, attendance updated, no refund,
+  event FINISHED), `expire-pending-payments` (5 min), `expire-waitlist-claims` (5 min).
+- Event cancellation in the backoffice now refunds every live redemption (keys + cash) and closes the
+  waitlist. Fraud review approve/deny now releases (ticket) or denies (keys back) held redemptions.
+- Member app: home "this week in your city" (day / type / tag chips, key-cost badge, private-sale
+  badge, "opens to your tier in Xh"), event page (per-offer eligibility explained, +1 info, waitlist
+  join/leave), redeem sheet (plan vs purchased breakdown, +1 name, price, cutoff), tickets list and
+  ticket page (full-screen QR on white, selfie, cancel with the cutoff shown, pay button for pending,
+  review notice for held). Backoffice: redemptions table on the event page, tickets on the member page.
+- Tests: 11 new (79 total): invariant 3 with 100 concurrent calls (exactly 10 win, 90 keep their
+  keys), 5 (private sale before/after opensAt), 6 (24 h ± 1 min), 7 (no-show forfeits), HELD counts
+  against capacity, PENDING_PAYMENT expiry releases the seat, discounted flow through the webhook with
+  replay and late-payment refund, overlap refusal, waitlist hand-off and expiry, event cancellation.
+
+**Decisions**
+
+- **Keys are debited at creation for every outcome** (pending, held, active) so the same keys can't be
+  spent twice while a payment or review is open; expiry and denial refund them. The spec's prose order
+  ("payment → keys → ticket") is kept for the member, the ledger just moves first.
+- **Discounted tickets pay through Stripe Checkout**, not a Payment Element: same webhook-only
+  fulfilment as plans and packs, no client-side Stripe.js or publishable key yet. The build plan said
+  "payment element"; CLAUDE.md allows Checkout. Swap later if the redirect hurts conversion.
+- The transaction runs READ COMMITTED with the row lock, not SERIALIZABLE: the lock is what serialises
+  members, and SERIALIZABLE only added spurious aborts for those queued behind it.
+- Every read inside the redemption transaction goes through the transaction client, settings
+  included. Using the global client inside a held transaction needs a second pool connection, and
+  under a burst that deadlocks the pool (found by the 100-concurrent test).
+- A HELD redemption with cash due becomes PENDING_PAYMENT on approval with a 24 h window (not 10 min),
+  since the member wasn't waiting at the screen.
+- Money arriving for an already expired/denied redemption is refunded automatically.
+- Waitlist joins require an eligible, verified member; verification is checked before everything else
+  (so an unverified member sees "add a selfie first", not the waitlist).
+- No Apple/Google Wallet pass: EventOS has none to port (Phase 10 decides).
+
+**Spec deviations**
+
+- Payment Element → Checkout (above).
+
+**Open**
+
+- Emails here are confirmation, cancellation and waitlist spot only; reminders and the rest are Phase 9.
+- `/app` home shows 7 days; "area" filter from spec §15 needs venue areas that don't exist yet.
+
+**Gotchas**
+
+- In dev, every test account shares the headless browser's fingerprint, so the shared-device rule
+  flags demo accounts into review; raise `device_max_accounts` in the dev settings when demoing.
+- Redirect responses in tests: a `waitForURL` that already matches resolves at once — navigate to a
+  clean URL before submitting.

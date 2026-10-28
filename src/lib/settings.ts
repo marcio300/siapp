@@ -1,3 +1,4 @@
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 /**
@@ -35,8 +36,13 @@ export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
   pending_payment_minutes: "Minutes a discounted-ticket redemption may stay PENDING_PAYMENT before releasing capacity",
 };
 
-export async function getSetting<K extends SettingKey>(key: K): Promise<(typeof SETTING_DEFAULTS)[K]> {
-  const row = await prisma.setting.findUnique({ where: { key } });
+/**
+ * Pass the transaction client when reading inside a transaction: the global
+ * client would need a SECOND pool connection, and under load that deadlocks
+ * the pool (every connection held by a transaction waiting for one more).
+ */
+export async function getSetting<K extends SettingKey>(key: K, db: PrismaClient | Prisma.TransactionClient = prisma): Promise<(typeof SETTING_DEFAULTS)[K]> {
+  const row = await db.setting.findUnique({ where: { key } });
   if (!row) return SETTING_DEFAULTS[key];
   return row.value as (typeof SETTING_DEFAULTS)[K];
 }

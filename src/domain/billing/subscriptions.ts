@@ -20,7 +20,8 @@ export type PlanWithTier = Plan & { tier: Tier };
 export type SubscriptionWithPlan = Subscription & { plan: PlanWithTier };
 
 export interface Opts {
-  db?: PrismaClient;
+  /** A TransactionClient joins the caller's transaction (no extra pool connection). */
+  db?: PrismaClient | Prisma.TransactionClient;
   now?: Date;
 }
 
