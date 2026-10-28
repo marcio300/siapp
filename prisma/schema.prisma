@@ -1,0 +1,628 @@
+// SIAPP — draft Prisma schema. Derived from docs/DATA_MODEL.md and docs/PRODUCT_SPEC.md.
+// Phase 0 adds the NextAuth adapter tables (Account, Session, VerificationToken) attached to Member,
+// ported from EventOS. Money is integer cents; all DateTime columns are UTC.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum TierCode {
+  FREE
+  SOCIAL
+  REGULAR
+  PLUS
+}
+
+enum BillingPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  TOURIST_WEEK
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum KeyPool {
+  PLAN
+  PURCHASED
+}
+
+enum KeyTransactionType {
+  PLAN_GRANT
+  PACK_PURCHASE
+  REDEMPTION
+  CANCELLATION_REFUND
+  REFERRAL_BONUS
+  EXPIRY
+  ADMIN_ADJUSTMENT
+  PROMO_GRANT
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  FINISHED
+}
+
+enum OfferType {
+  FREE_TICKET
+  DISCOUNT_TICKET
+  GUESTLIST
+}
+
+enum AllocationType {
+  CAPPED
+  TIME_WINDOW
+}
+
+enum AfterWindowBehaviour {
+  REFUSE
+  PAY_DOOR
+}
+
+enum RedemptionStatus {
+  PENDING_PAYMENT
+  HELD
+  ACTIVE
+  CANCELLED
+  CHECKED_IN
+  NO_SHOW
+  EXPIRED
+  DENIED
+}
+
+enum ScanResult {
+  OK
+  ALREADY_SCANNED
+  WINDOW_CLOSED
+  CANCELLED
+  INVALID
+}
+
+enum WaitlistStatus {
+  WAITING
+  NOTIFIED
+  CLAIMED
+  EXPIRED
+}
+
+enum ReferralStatus {
+  PENDING
+  VESTED
+  REJECTED
+}
+
+enum FraudRule {
+  DEVICE_MAX_ACCOUNTS
+  VELOCITY_FIRST_HOUR
+  VELOCITY_PRIVATE_SALE
+  OVERLAP
+  SAME_CARD
+  SELF_REFERRAL
+}
+
+enum FraudFlagStatus {
+  OPEN
+  APPROVED
+  DENIED
+}
+
+enum SettlementStatus {
+  OPEN
+  PAID
+}
+
+enum StaffRole {
+  ADMIN
+  OPS
+  DOOR
+}
+
+// ───────────────────────── Cities ─────────────────────────
+
+model City {
+  id        String   @id @default(cuid())
+  name      String
+  country   String // ISO 3166-1 alpha-2
+  timezone  String // IANA, e.g. Europe/Lisbon
+  currency  String // ISO 4217, e.g. EUR
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members    Member[]
+  producers  Producer[]
+  events     Event[]
+  planPrices PlanPrice[]
+}
+
+// ───────────────────────── Members ─────────────────────────
+
+model Member {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  emailVerifiedAt DateTime?
+  name            String?
+  dateOfBirth     DateTime?
+  ageAttestedAt   DateTime? // explicit 24+ attestation at signup
+  selfieUrl       String?
+  selfieUploadedAt DateTime?
+  idPhotoUrl      String? // tourists only; encrypted at rest, purged after 30 days
+  idPhotoUploadedAt DateTime?
+  cityId          String
+  referralCode    String    @unique
+  bannedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  city             City              @relation(fields: [cityId], references: [id])
+  subscriptions    Subscription[]
+  keyTransactions  KeyTransaction[]
+  keyBalance       KeyBalance?
+  redemptions      Redemption[]
+  waitlistEntries  WaitlistEntry[]
+  referralsMade    Referral[]        @relation("Referrer")
+  referralReceived Referral?         @relation("Invitee")
+  partnerClaims    PartnerClaim[]
+  devices          Device[]
+  fraudFlags       FraudFlag[]
+  attendanceStats  AttendanceStats?
+  stripeCustomer   StripeCustomer?
+
+  @@index([cityId])
+}
+
+model StripeCustomer {
+  memberId         String @id
+  stripeCustomerId String @unique
+  member           Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model AttendanceStats {
+  memberId  String   @id
+  shows     Int      @default(0)
+  noShows   Int      @default(0)
+  disputes  Int      @default(0)
+  updatedAt DateTime @updatedAt
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+// ───────────────────────── Tiers, plans, packs ─────────────────────────
+
+model Tier {
+  id                   String   @id @default(cuid())
+  code                 TierCode @unique
+  name                 String
+  keysPerMonth         Int
+  privateSaleByDefault Boolean  @default(false)
+  plusOneByDefault     Boolean  @default(false)
+  sortOrder            Int      @default(0)
+  isActive             Boolean  @default(true)
+
+  plans Plan[]
+}
+
+model Plan {
+  id            String        @id @default(cuid())
+  tierId        String
+  period        BillingPeriod
+  stripeProductId String?
+  isActive      Boolean       @default(true)
+
+  tier          Tier           @relation(fields: [tierId], references: [id])
+  prices        PlanPrice[]
+  subscriptions Subscription[]
+
+  @@unique([tierId, period])
+}
+
+model PlanPrice {
+  id            String  @id @default(cuid())
+  planId        String
+  cityId        String
+  currency      String
+  amountCents   Int
+  stripePriceId String? @unique
+
+  plan Plan @relation(fields: [planId], references: [id])
+  city City @relation(fields: [cityId], references: [id])
+
+  @@unique([planId, cityId])
+}
+
+model KeyPack {
+  id              String  @id @default(cuid())
+  name            String
+  keys            Int
+  currency        String
+  amountCents     Int
+  stripeProductId String?
+  stripePriceId   String? @unique
+  isActive        Boolean @default(true)
+  sortOrder       Int     @default(0)
+}
+
+// ───────────────────────── Subscriptions (mirror Stripe) ─────────────────────────
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  memberId             String
+  planId               String
+  stripeSubscriptionId String?            @unique // null for FREE, TOURIST_WEEK and partner promo periods
+  status               SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  nextGrantAt          DateTime? // quarterly/yearly: next monthly key grant
+  firstPaidAt          DateTime? // referral vesting clock
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id])
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@index([memberId, status])
+  @@index([nextGrantAt])
+  @@index([currentPeriodEnd])
+}
+
+// ───────────────────────── Keys ledger ─────────────────────────
+
+model KeyTransaction {
+  id           String             @id @default(cuid())
+  memberId     String
+  pool         KeyPool
+  type         KeyTransactionType
+  amount       Int // signed: grants +, spends/expiry −
+  expiresAt    DateTime? // PLAN_GRANT rows: period end
+  redemptionId String?
+  note         String?
+  createdById  String? // StaffUser for ADMIN_ADJUSTMENT
+  createdAt    DateTime           @default(now())
+
+  member     Member      @relation(fields: [memberId], references: [id])
+  redemption Redemption? @relation(fields: [redemptionId], references: [id])
+  createdBy  StaffUser?  @relation(fields: [createdById], references: [id])
+
+  @@index([memberId, pool, createdAt])
+  @@index([redemptionId])
+  @@index([expiresAt])
+}
+
+// Read cache only. Updated in the same transaction as every ledger write; the ledger is the truth.
+model KeyBalance {
+  memberId          String    @id
+  planKeys          Int       @default(0)
+  purchasedKeys     Int       @default(0)
+  planKeysExpireAt  DateTime?
+  updatedAt         DateTime  @updatedAt
+  member            Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+// ───────────────────────── Supply side ─────────────────────────
+
+model Producer {
+  id                     String  @id @default(cuid())
+  cityId                 String
+  name                   String
+  contactName            String?
+  contactEmail           String?
+  contactPhone           String?
+  payoutDetailsEncrypted String? // IBAN etc., encrypted at rest
+  defaultDiscountPercent Int?
+  usesEventOS            Boolean @default(false)
+  notes                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  city        City         @relation(fields: [cityId], references: [id])
+  events      Event[]
+  settlements Settlement[]
+
+  @@index([cityId])
+}
+
+model Event {
+  id             String      @id @default(cuid())
+  producerId     String
+  cityId         String
+  title          String
+  description    String?
+  venue          String?
+  address        String?
+  imageUrls      String[]
+  tags           String[]
+  startsAt       DateTime
+  endsAt         DateTime
+  status         EventStatus @default(DRAFT)
+  publishedAt    DateTime?
+  scannerCode    String      @unique
+  scannerPinHash String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  producer    Producer     @relation(fields: [producerId], references: [id])
+  city        City         @relation(fields: [cityId], references: [id])
+  offers      Offer[]
+  redemptions Redemption[]
+  settlements Settlement[]
+
+  @@index([cityId, status, startsAt])
+  @@index([producerId])
+}
+
+model Offer {
+  id                      String                @id @default(cuid())
+  eventId                 String
+  name                    String
+  type                    OfferType
+  keyCost                 Int
+  faceValueCents          Int? // DISCOUNT_TICKET only
+  discountPercent         Int? // DISCOUNT_TICKET only, 0–100
+  allocationType          AllocationType
+  capacity                Int? // CAPPED only
+  validUntil              DateTime? // TIME_WINDOW only, absolute UTC
+  afterWindowBehaviour    AfterWindowBehaviour? // TIME_WINDOW only
+  privateSaleTiers        TierCode[] // empty = no private sale
+  privateSaleHoursBefore  Int? // 24 | 48
+  privateSaleOpensAt      DateTime? // computed from publishedAt, editable
+  openToFree              Boolean               @default(false)
+  plusOneAllowed          Boolean               @default(false)
+  plusOneExtraKeyCost     Int                   @default(0)
+  plusOneExtraCashCents   Int?
+  cancellationWindowHours Int? // null = global setting
+  maxPerMember            Int                   @default(1)
+  redeemFrom              DateTime?
+  redeemUntil             DateTime?
+  sortOrder               Int                   @default(0)
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  event           Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  redemptions     Redemption[]
+  waitlistEntries WaitlistEntry[]
+
+  @@index([eventId])
+}
+
+// ───────────────────────── Redemption, tickets, scans ─────────────────────────
+
+model Redemption {
+  id                    String           @id @default(cuid())
+  memberId              String
+  offerId               String
+  eventId               String
+  status                RedemptionStatus
+  keyCost               Int // total keys debited incl. +1
+  plusOneName           String?
+  cashCents             Int              @default(0) // discounted ticket (+ plus-one cash)
+  stripePaymentIntentId String?          @unique
+  stripeRefundId        String?
+  paymentExpiresAt      DateTime? // PENDING_PAYMENT hold expiry
+  cancelDeadlineAt      DateTime // startsAt − cancellation window
+  cancelledAt           DateTime?
+  checkedInAt           DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  member          Member           @relation(fields: [memberId], references: [id])
+  offer           Offer            @relation(fields: [offerId], references: [id])
+  event           Event            @relation(fields: [eventId], references: [id])
+  ticket          Ticket?
+  keyTransactions KeyTransaction[]
+  fraudFlags      FraudFlag[]
+
+  @@index([offerId, status])
+  @@index([memberId, status])
+  @@index([eventId, status])
+  @@index([paymentExpiresAt])
+}
+
+model Ticket {
+  id               String   @id @default(cuid())
+  redemptionId     String   @unique
+  qrPayload        String   @unique // same format and signing as EventOS
+  signature        String
+  memberName       String
+  photoSnapshotUrl String?
+  plusOneName      String?
+  issuedAt         DateTime @default(now())
+
+  redemption Redemption @relation(fields: [redemptionId], references: [id], onDelete: Cascade)
+  scans      Scan[]
+}
+
+model Scan {
+  id         String     @id @default(cuid())
+  ticketId   String?
+  eventId    String
+  result     ScanResult
+  rawPayload String?
+  scannedBy  String? // scanner session / staff id
+  disputed   Boolean    @default(false)
+  disputeNote String?
+  scannedAt  DateTime   @default(now())
+
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId])
+  @@index([eventId, scannedAt])
+}
+
+model WaitlistEntry {
+  id         String         @id @default(cuid())
+  offerId    String
+  memberId   String
+  status     WaitlistStatus @default(WAITING)
+  notifiedAt DateTime?
+  claimBy    DateTime? // notifiedAt + waitlist_claim_minutes
+  createdAt  DateTime       @default(now())
+
+  offer  Offer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@unique([offerId, memberId])
+  @@index([offerId, status, createdAt])
+  @@index([claimBy])
+}
+
+// ───────────────────────── Referrals ─────────────────────────
+
+model Referral {
+  id         String         @id @default(cuid())
+  referrerId String
+  inviteeId  String         @unique
+  code       String
+  status     ReferralStatus @default(PENDING)
+  vestedAt   DateTime?
+  rejectedReason String?
+  createdAt  DateTime       @default(now())
+
+  referrer Member @relation("Referrer", fields: [referrerId], references: [id])
+  invitee  Member @relation("Invitee", fields: [inviteeId], references: [id])
+
+  @@index([referrerId, status])
+}
+
+// ───────────────────────── Partner communities (ELL bridge) ─────────────────────────
+
+model PartnerCommunity {
+  id        String   @id @default(cuid())
+  code      String   @unique // e.g. ELL
+  name      String
+  publicKey String // PEM, verifies RS256 claim tokens
+  promo     Json // e.g. { "grantTier": "SOCIAL", "months": 3 } or { "stripeCouponId": "..." }
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  claims PartnerClaim[]
+}
+
+model PartnerClaim {
+  id               String   @id @default(cuid())
+  communityId      String
+  memberId         String
+  externalMemberId String
+  tokenJti         String?  @unique
+  claimedAt        DateTime @default(now())
+
+  community PartnerCommunity @relation(fields: [communityId], references: [id])
+  member    Member           @relation(fields: [memberId], references: [id])
+
+  @@unique([communityId, externalMemberId])
+  @@index([memberId])
+}
+
+// ───────────────────────── Fraud ─────────────────────────
+
+model Device {
+  id          String   @id @default(cuid())
+  memberId    String
+  fingerprint String
+  userAgent   String?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, fingerprint])
+  @@index([fingerprint])
+}
+
+model FraudFlag {
+  id           String          @id @default(cuid())
+  memberId     String
+  redemptionId String?
+  rule         FraudRule
+  evidence     Json
+  status       FraudFlagStatus @default(OPEN)
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime        @default(now())
+
+  member     Member      @relation(fields: [memberId], references: [id])
+  redemption Redemption? @relation(fields: [redemptionId], references: [id])
+  reviewedBy StaffUser?  @relation(fields: [reviewedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([memberId])
+}
+
+// ───────────────────────── Settlements ─────────────────────────
+
+model Settlement {
+  id          String           @id @default(cuid())
+  producerId  String
+  eventId     String           @unique
+  status      SettlementStatus @default(OPEN)
+  currency    String
+  amountCents Int
+  paidAt      DateTime?
+  reference   String?
+  emailedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  producer Producer         @relation(fields: [producerId], references: [id])
+  event    Event            @relation(fields: [eventId], references: [id])
+  lines    SettlementLine[]
+
+  @@index([producerId, status])
+}
+
+model SettlementLine {
+  id              String @id @default(cuid())
+  settlementId    String
+  ticketId        String @unique
+  faceValueCents  Int
+  discountPercent Int
+  owedCents       Int // face × (1 − discount%), round half up
+
+  settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+}
+
+// ───────────────────────── Settings, staff, Stripe ─────────────────────────
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model StaffUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  role         StaffRole @default(OPS)
+  passwordHash String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  keyAdjustments KeyTransaction[]
+  fraudReviews   FraudFlag[]
+}
+
+// Idempotency for Stripe webhooks: store every event id, skip duplicates.
+model StripeEvent {
+  id          String    @id // Stripe event id
+  type        String
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  error       String?
+}
