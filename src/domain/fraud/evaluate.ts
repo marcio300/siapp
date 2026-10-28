@@ -4,22 +4,26 @@ import { getSetting } from "@/lib/settings";
 import { openFlag } from "./flags";
 
 /**
- * Fraud evaluation before a redemption (spec §7 step 7, §10). Returns ALLOW
- * or REVIEW plus the rules that fired; every fired rule is written as an
- * OPEN FraudFlag with its evidence so the backoffice queue can act on it.
- * REVIEW → the caller creates a HELD redemption (Phase 5) and passes its id
- * so the flags link to it.
+ * Fraud evaluation before a redemption (spec §7 steps 6–7, §10).
  *
- * Rules (all thresholds from Settings):
+ * - REJECT: the OVERLAP rule (owner decision 2026-10-28) — a live redemption
+ *   for another event starting within ±overlap_tolerance_hours is a hard
+ *   eligibility failure (spec §7 item 6). No flag is written; the member gets
+ *   the reason straight away. Further apart than the tolerance → allowed.
+ * - REVIEW: every other rule that fires is written as an OPEN FraudFlag with
+ *   evidence; the caller creates a HELD redemption (Phase 5) and passes its id
+ *   so the flags link to it.
+ * - ALLOW: nothing fired.
+ *
+ * Review rules (all thresholds from Settings):
  * - DEVICE_MAX_ACCOUNTS   a fingerprint of this member is shared by more than device_max_accounts members
  * - VELOCITY_FIRST_HOUR   account < 1 h old and already ≥ velocity_first_hour_max redemptions
  * - VELOCITY_PRIVATE_SALE account < 24 h old and already ≥ velocity_private_sale_first_day_max private-sale
  *                         redemptions, and this offer is a private sale
- * - OVERLAP               a live redemption for another event starting within overlap_tolerance_hours
  * - SAME_CARD             a card fingerprint of this member is shared by more than same_card_max_accounts members
  * - SELF_REFERRAL         reserved for Phase 7 (referrals)
  */
-export type FraudDecision = "ALLOW" | "REVIEW";
+export type FraudDecision = "ALLOW" | "REVIEW" | "REJECT";
 
 export interface FiredRule {
   rule: FraudRule;
@@ -28,7 +32,10 @@ export interface FiredRule {
 
 export interface FraudEvaluation {
   decision: FraudDecision;
+  /** Review rules that fired (each has an OPEN FraudFlag). */
   fired: FiredRule[];
+  /** Hard-reject rules that fired (no flag; show the reason to the member). */
+  rejected: FiredRule[];
 }
 
 const LIVE_REDEMPTION: RedemptionStatus[] = ["PENDING_PAYMENT", "HELD", "ACTIVE", "CHECKED_IN"];
@@ -41,6 +48,7 @@ export async function evaluate(
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
   const fired: FiredRule[] = [];
+  const rejected: FiredRule[] = [];
 
   const [member, offer] = await Promise.all([
     db.member.findUniqueOrThrow({ where: { id: memberId } }),
@@ -104,7 +112,7 @@ export async function evaluate(
     include: { event: { select: { id: true, title: true, startsAt: true } } },
   });
   if (overlapping) {
-    fired.push({
+    rejected.push({
       rule: "OVERLAP",
       evidence: {
         otherEventId: overlapping.event.id,
@@ -127,5 +135,6 @@ export async function evaluate(
   }
 
   for (const f of fired) await openFlag(db, memberId, f.rule, f.evidence, opts.redemptionId ?? null, now);
-  return { decision: fired.length > 0 ? "REVIEW" : "ALLOW", fired };
+  const decision: FraudDecision = rejected.length > 0 ? "REJECT" : fired.length > 0 ? "REVIEW" : "ALLOW";
+  return { decision, fired, rejected };
 }

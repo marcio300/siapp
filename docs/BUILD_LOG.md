@@ -192,13 +192,16 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
 **Decisions**
 
 - The member row exists before onboarding (magic link), so `onboardedAt` is the gate, not `cityId`.
-- OVERLAP lives in `evaluate` as a REVIEW rule, per the build plan; the spec's §7 lists it as a hard
-  eligibility reject. Phase 5 decides which (the evaluation exposes the fired rules, so it can refuse
-  outright on OVERLAP).
-- Approving a flag linked to a HELD redemption releases it only once every open flag on that redemption
-  is approved; denying any flag denies the redemption. Refunding keys of a DENIED redemption is Phase 5's.
+- **OVERLAP is a hard refusal** (owner, 2026-10-28): a live redemption for another event starting
+  within `overlap_tolerance_hours` (3 h) of this one makes `evaluate` return REJECT with the reason and
+  writes no flag; events further apart are allowed. Phase 5 shows the reason on the redeem screen.
+- **One approval releases everything** (owner, 2026-10-28): approving any flag on a HELD redemption
+  releases it and closes the redemption's other open flags as APPROVED (noted "approved with …");
+  denying any flag denies the redemption. Refunding keys of a DENIED redemption is Phase 5's.
 - Banning closes all open flags as DENIED, denies HELD redemptions, kills sessions and blocks sign-in.
-- Partner claim tokens are stored raw on the member (shape-checked only); Phase 7 verifies and consumes.
+- Partner claim tokens are stored raw on the member (shape-checked only); Phase 7 verifies and consumes
+  (owner, 2026-10-28: keep as built; don't open signups to ELL members before Phase 7 is live, tokens
+  expire in ~7 days).
 - ID photos are served decrypted through `/api/admin/id-photo/[memberId]` (OPS+), never cached. Key from
   `ID_PHOTO_KEY` (required in production); dev derives one from `AUTH_SECRET`.
 - Two new settings: `velocity_private_sale_first_day_max` (1) and `same_card_max_accounts` (1).

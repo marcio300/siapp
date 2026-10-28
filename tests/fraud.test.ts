@@ -43,7 +43,7 @@ describe("fraud", () => {
     const m = await createMember();
     await age(m.id, 48);
     const offer = await makeOffer(72);
-    expect(await evaluate(m.id, offer.id)).toEqual({ decision: "ALLOW", fired: [] });
+    expect(await evaluate(m.id, offer.id)).toEqual({ decision: "ALLOW", fired: [], rejected: [] });
     expect(await prisma.fraudFlag.count({ where: { memberId: m.id } })).toBe(0);
   });
 
@@ -92,15 +92,20 @@ describe("fraud", () => {
     expect((await evaluate(m.id, (await makeOffer(400, true)).id)).decision).toBe("ALLOW");
   });
 
-  it("OVERLAP: a live redemption for another event within the tolerance window is reviewed", async () => {
+  it("OVERLAP: a live redemption for another event starting within 3 h is a hard REJECT (no flag); further apart is allowed", async () => {
     const m = await createMember();
     await age(m.id, 48);
     const first = await makeOffer(72);
     await redeem(m.id, first.id);
     const within = await makeOffer(74); // 2 h later, tolerance 3 h
     const result = await evaluate(m.id, within.id);
-    expect(result.fired.map((f) => f.rule)).toEqual(["OVERLAP"]);
-    expect(result.fired[0]!.evidence).toMatchObject({ toleranceHours: 3 });
+    expect(result.decision).toBe("REJECT");
+    expect(result.fired).toEqual([]);
+    expect(result.rejected.map((f) => f.rule)).toEqual(["OVERLAP"]);
+    expect(result.rejected[0]!.evidence).toMatchObject({ toleranceHours: 3 });
+    expect(await prisma.fraudFlag.count({ where: { memberId: m.id } })).toBe(0); // no queue entry for a hard refusal
+    expect((await evaluate(m.id, (await makeOffer(74.9)).id)).decision).toBe("REJECT"); // 2 h 54 min apart
+    expect((await evaluate(m.id, (await makeOffer(75.5)).id)).decision).toBe("ALLOW"); // 3 h 30 min apart
     expect((await evaluate(m.id, (await makeOffer(76)).id)).decision).toBe("ALLOW"); // 4 h later
     // Another offer on the SAME event never overlaps with itself.
     const sameEvent = await prisma.offer.create({ data: { eventId: first.eventId, name: "VIP", type: "FREE_TICKET", keyCost: 20, allocationType: "CAPPED", capacity: 10 } });
@@ -135,7 +140,7 @@ describe("fraud", () => {
     expect((await handleStripeEvent({ id: "evt_nocard", type: "charge.succeeded", data: { object: { id: "ch_x", customer: "cus_unknown", payment_method_details: { card: { fingerprint: "fp_other" } } } } })).note).toMatch(/no member/);
   });
 
-  it("review: approve releases a HELD redemption, deny denies it, flags can't be reviewed twice; ban closes everything", async () => {
+  it("review: one approval releases a HELD redemption and closes its other flags, deny denies it, flags can't be reviewed twice; ban closes everything", async () => {
     const staff = await createStaff("ADMIN");
     const m = await createMember();
     await age(m.id, 48);
@@ -145,11 +150,11 @@ describe("fraud", () => {
     const f1 = await prisma.fraudFlag.create({ data: { memberId: m.id, rule: "OVERLAP", evidence: {}, redemptionId: held.id } });
     const f2 = await prisma.fraudFlag.create({ data: { memberId: m.id, rule: "SAME_CARD", evidence: {}, redemptionId: held.id } });
     await reviewFlag(f1.id, "APPROVED", { staffId: staff.id, note: "fine" });
-    expect((await prisma.redemption.findUniqueOrThrow({ where: { id: held.id } })).status).toBe("HELD"); // f2 still open
-    await expect(reviewFlag(f1.id, "APPROVED", { staffId: staff.id })).rejects.toBeInstanceOf(ReviewError);
-    await reviewFlag(f2.id, "APPROVED", { staffId: staff.id });
-    expect((await prisma.redemption.findUniqueOrThrow({ where: { id: held.id } })).status).toBe("ACTIVE");
+    expect((await prisma.redemption.findUniqueOrThrow({ where: { id: held.id } })).status).toBe("ACTIVE"); // one approval is enough
     expect(await prisma.fraudFlag.findUniqueOrThrow({ where: { id: f1.id } })).toMatchObject({ status: "APPROVED", reviewedById: staff.id, reviewNote: "fine" });
+    expect(await prisma.fraudFlag.findUniqueOrThrow({ where: { id: f2.id } })).toMatchObject({ status: "APPROVED", reviewedById: staff.id, reviewNote: `approved with OVERLAP flag ${f1.id}` });
+    await expect(reviewFlag(f1.id, "APPROVED", { staffId: staff.id })).rejects.toBeInstanceOf(ReviewError);
+    await expect(reviewFlag(f2.id, "DENIED", { staffId: staff.id })).rejects.toBeInstanceOf(ReviewError);
 
     const held2 = await createRedemption(m.id);
     await prisma.redemption.update({ where: { id: held2.id }, data: { status: "HELD" } });

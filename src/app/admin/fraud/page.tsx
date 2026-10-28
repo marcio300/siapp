@@ -33,7 +33,7 @@ export default async function FraudQueuePage({ searchParams }: { searchParams: P
     <>
       <PageHeader
         title="Fraud queue"
-        subtitle={`${openCount} open ${openCount === 1 ? "flag" : "flags"}. Approving a flag tied to a held redemption releases it once every flag on it is approved; denying denies the redemption.`}
+        subtitle={`${openCount} open ${openCount === 1 ? "flag" : "flags"}. Approving a flag tied to a held redemption releases it and closes its other flags; denying denies the redemption.`}
         actions={
           <Link href={showClosed ? "/admin/fraud" : "/admin/fraud?closed=1"} className="btn btn-outline">
             {showClosed ? "Show open" : "Show reviewed"}

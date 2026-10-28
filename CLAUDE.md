@@ -184,14 +184,14 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   (`isDisposableEmail`, vendored `disposable-domains.json` ~10k, subdomain match; refresh `pnpm
   fraud:update-disposable-domains`; enforced in auth `signIn` callback + friendly check in the sign-in
   action), `devices.ts` (`recordDevice` upsert + DEVICE_MAX_ACCOUNTS flag when accounts > setting;
-  `deviceOverlap`), `evaluate.ts` (`evaluate(memberId, offerId, {db?, now?, redemptionId?})` → `{decision,
-  fired}`; rules DEVICE_MAX_ACCOUNTS / VELOCITY_FIRST_HOUR (<1h, live redemptions ≥ setting) /
-  VELOCITY_PRIVATE_SALE (<24h, setting `velocity_private_sale_first_day_max`) / OVERLAP (live redemption,
-  other event, ±`overlap_tolerance_hours`) / SAME_CARD (`PaymentMethodFingerprint` shared > `same_card_max_
+  `deviceOverlap`), `evaluate.ts` (`evaluate(memberId, offerId, {db?, now?, redemptionId?})` → `{decision ALLOW|REVIEW|
+  REJECT, fired, rejected}`; OVERLAP (live redemption, other event, ±`overlap_tolerance_hours`) is a HARD
+  REJECT with no flag (owner decision); review rules DEVICE_MAX_ACCOUNTS / VELOCITY_FIRST_HOUR (<1h, live
+  redemptions ≥ setting) / VELOCITY_PRIVATE_SALE (<24h, setting `velocity_private_sale_first_day_max`) / SAME_CARD (`PaymentMethodFingerprint` shared > `same_card_max_
   accounts`); writes OPEN flags via `flags.ts` `openFlag` (one per member+rule+redemption, evidence updated)),
   `cards.ts` (`charge.succeeded` → `recordCardFingerprint`; `registerFraudWebhooks()` in the route),
-  `review.ts` (`reviewFlag` APPROVED releases HELD→ACTIVE only when no other OPEN flag on the redemption,
-  DENIED → HELD→DENIED; `banMember` = bannedAt+reason, open flags DENIED, HELD denied, sessions deleted;
+  `review.ts` (`reviewFlag` APPROVED releases HELD→ACTIVE and closes the redemption's other OPEN flags as
+  APPROVED (owner: one approval releases everything), DENIED → HELD→DENIED; `banMember` = bannedAt+reason, open flags DENIED, HELD denied, sessions deleted;
   `unbanMember`). Schema: `Member.onboardedAt/partnerClaimToken/partnerClaimTokenAt/banReason`,
   `PaymentMethodFingerprint` — migration `20261028180000_identity_fraud`. Billing: tourist checkout now
   requires `idPhotoUploadedAt`. Member app: `/r/[code]` route handler (cookie `siapp_ref` 30d),

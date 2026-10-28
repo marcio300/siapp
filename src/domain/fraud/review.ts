@@ -2,9 +2,10 @@ import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
 
 /**
- * Backoffice fraud queue actions. Approving/denying a flag that is linked to
- * a HELD redemption releases or denies that redemption; releasing keys for a
- * DENIED redemption is Phase 5's job (it owns redemption money/keys flow).
+ * Backoffice fraud queue actions. Owner decision 2026-10-28: ONE approval
+ * releases a HELD redemption and closes every other open flag on it as
+ * APPROVED (noted as approved alongside the reviewed flag); any denial denies
+ * the redemption. Releasing keys for a DENIED redemption is Phase 5's job.
  */
 export class ReviewError extends Error {
   constructor(message: string) {
@@ -29,10 +30,13 @@ export async function reviewFlag(
     data: { status: decision, reviewedById: input.staffId, reviewedAt: now, reviewNote: input.note?.trim() || null },
   });
   if (flag.redemptionId) {
-    const otherOpen = await db.fraudFlag.count({ where: { redemptionId: flag.redemptionId, status: "OPEN" } });
     if (decision === "DENIED") {
       await db.redemption.updateMany({ where: { id: flag.redemptionId, status: "HELD" }, data: { status: "DENIED" } });
-    } else if (otherOpen === 0) {
+    } else {
+      await db.fraudFlag.updateMany({
+        where: { redemptionId: flag.redemptionId, status: "OPEN" },
+        data: { status: "APPROVED", reviewedById: input.staffId, reviewedAt: now, reviewNote: `approved with ${flag.rule} flag ${flag.id}` },
+      });
       await db.redemption.updateMany({ where: { id: flag.redemptionId, status: "HELD" }, data: { status: "ACTIVE" } });
     }
   }
