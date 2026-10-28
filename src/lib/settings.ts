@@ -13,7 +13,9 @@ export const SETTING_DEFAULTS = {
   referral_monthly_cap: 20,
   referral_vesting_days: 30,
   velocity_first_hour_max: 3,
+  velocity_private_sale_first_day_max: 1,
   device_max_accounts: 3,
+  same_card_max_accounts: 1,
   pending_payment_minutes: 10,
 } as const;
 
@@ -27,7 +29,9 @@ export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
   referral_monthly_cap: "Max vested referrals per referrer per month",
   referral_vesting_days: "Days after the invitee's first payment before a referral can vest",
   velocity_first_hour_max: "Redemptions in a new account's first hour before fraud review",
+  velocity_private_sale_first_day_max: "Private-sale redemptions in a new account's first day before fraud review",
   device_max_accounts: "Accounts allowed per device fingerprint before fraud review",
+  same_card_max_accounts: "Accounts allowed per Stripe card fingerprint before fraud review",
   pending_payment_minutes: "Minutes a discounted-ticket redemption may stay PENDING_PAYMENT before releasing capacity",
 };
 

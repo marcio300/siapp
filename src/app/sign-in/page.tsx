@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/lib/auth";
 import { Wordmark } from "@/components/wordmark";
+import { isDisposableEmail } from "@/domain/fraud/disposable";
 
 /**
  * One sign-in for members and staff: email magic link, nothing else.
@@ -11,9 +12,9 @@ import { Wordmark } from "@/components/wordmark";
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; sent?: string }>;
+  searchParams: Promise<{ next?: string; sent?: string; error?: string }>;
 }) {
-  const { next, sent } = await searchParams;
+  const { next, sent, error } = await searchParams;
   const session = await auth();
   if (session?.user) redirect(session.user.staffId ? "/admin" : "/app");
 
@@ -26,6 +27,9 @@ export default async function SignInPage({
       .toLowerCase();
     const redirectTo = String(formData.get("next") ?? "/");
     if (!email) return;
+    if (isDisposableEmail(email)) {
+      redirect(`/sign-in?error=disposable&next=${encodeURIComponent(redirectTo)}`);
+    }
     await signIn("email", { email, redirectTo, redirect: false });
     redirect(`/sign-in?sent=1&next=${encodeURIComponent(redirectTo)}`);
   }
@@ -49,6 +53,13 @@ export default async function SignInPage({
                 we&apos;ll email you a sign-in link. no password, ever.
               </p>
             </div>
+            {error && (
+              <p className="mt-4 rounded-xl border border-red/40 bg-red/10 px-4 py-3 text-sm text-red-soft">
+                {error === "disposable"
+                  ? "sorry, throwaway email addresses don't get in. use one you'll keep."
+                  : "sorry, we couldn't sign you in with that address."}
+              </p>
+            )}
             <form action={signInWithEmail} className="mt-6 flex flex-col gap-3">
               <input type="hidden" name="next" value={target} />
               <input

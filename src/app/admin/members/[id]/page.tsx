@@ -5,6 +5,9 @@ import { prisma } from "@/lib/db";
 import { requireStaffPage } from "@/lib/authz";
 import { getBalance, getLedger } from "@/domain/keys";
 import { getMembership } from "@/domain/billing";
+import { deviceOverlap } from "@/domain/fraud";
+import { verificationStatus } from "@/domain/identity";
+import { banMemberAction, reviewFlagAction, unbanMemberAction } from "@/app/admin/fraud/actions";
 import { formatDate, formatDateOnly } from "@/lib/format";
 import { Badge, statusTone, type BadgeTone } from "@/components/backoffice/badge";
 import { KeyIcon } from "@/components/key-icon";
@@ -40,22 +43,26 @@ export default async function MemberPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ pool?: string; type?: string; error?: string; adjusted?: string }>;
+  searchParams: Promise<{ pool?: string; type?: string; error?: string; adjusted?: string; banned?: string; unbanned?: string; reviewed?: string }>;
 }) {
   const staff = await requireStaffPage("OPS");
   const { id } = await params;
   const sp = await searchParams;
-  const member = await prisma.member.findUnique({ where: { id }, include: { city: true } });
+  const member = await prisma.member.findUnique({ where: { id }, include: { city: true, attendanceStats: true } });
   if (!member) notFound();
+  const verification = verificationStatus(member);
 
   const pool = POOLS.includes(sp.pool as KeyPool) ? (sp.pool as KeyPool) : undefined;
   const type = TYPES.includes(sp.type as KeyTransactionType) ? (sp.type as KeyTransactionType) : undefined;
   const tz = member.city?.timezone;
-  const [balance, ledger, membership] = await Promise.all([
+  const [balance, ledger, membership, devices, flags] = await Promise.all([
     getBalance(member.id),
     getLedger(member.id, { pool, type, take: 200 }),
     getMembership(member.id),
+    deviceOverlap(member.id),
+    prisma.fraudFlag.findMany({ where: { memberId: member.id }, orderBy: { createdAt: "desc" }, take: 50, include: { reviewedBy: { select: { name: true, email: true } } } }),
   ]);
+  const backPath = `/admin/members/${member.id}`;
   const sub = membership.subscription;
 
   return (
@@ -88,6 +95,75 @@ export default async function MemberPage({
           Adjustment of {sp.adjusted} keys recorded.
         </p>
       )}
+      {sp.banned && <p className="mb-4 rounded-lg border border-ok/40 bg-ok/15 px-4 py-2 text-sm">Member banned.</p>}
+      {sp.unbanned && <p className="mb-4 rounded-lg border border-ok/40 bg-ok/15 px-4 py-2 text-sm">Ban lifted.</p>}
+      {sp.reviewed && <p className="mb-4 rounded-lg border border-ok/40 bg-ok/15 px-4 py-2 text-sm">Flag {sp.reviewed}.</p>}
+
+      <div className="mb-4 grid gap-4 lg:grid-cols-3">
+        <div className="card flex gap-4 p-5">
+          {member.selfieUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={member.selfieUrl} alt="Selfie" className="h-24 w-24 shrink-0 rounded-xl border border-line-light object-cover" />
+          ) : (
+            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl border border-dashed border-line-light text-xs text-ink-dark-muted">no selfie</div>
+          )}
+          <div className="min-w-0 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Identity</p>
+            <ul className="mt-2 space-y-1">
+              <li><Badge tone={verification.emailVerified ? "ok" : "warn"}>email {verification.emailVerified ? "verified" : "unverified"}</Badge></li>
+              <li><Badge tone={verification.onboarded ? "ok" : "warn"}>{verification.onboarded ? "onboarded" : "not onboarded"}</Badge></li>
+              <li><Badge tone={verification.selfie ? "ok" : "warn"}>{verification.selfie ? "selfie on file" : "no selfie"}</Badge></li>
+            </ul>
+            <p className="mt-2 text-xs text-ink-dark-muted">
+              {member.dateOfBirth ? `born ${formatDateOnly(member.dateOfBirth, "UTC")}` : "no DOB"}
+              {member.ageAttestedAt ? ` · 24+ attested ${formatDateOnly(member.ageAttestedAt, tz)}` : ""}
+            </p>
+          </div>
+        </div>
+        <div className="card p-5 text-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">ID photo (tourists)</p>
+          {member.idPhotoUploadedAt ? (
+            <>
+              <a href={`/api/admin/id-photo/${member.id}`} target="_blank" rel="noreferrer" className="mt-2 block">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/admin/id-photo/${member.id}`} alt="ID photo" className="h-24 rounded-xl border border-line-light object-cover" />
+              </a>
+              <p className="mt-2 text-xs text-ink-dark-muted">uploaded {formatDateOnly(member.idPhotoUploadedAt, tz)} · auto-deleted after 30 days · encrypted at rest</p>
+            </>
+          ) : (
+            <p className="mt-2 text-ink-dark-muted">none</p>
+          )}
+          <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Attendance</p>
+          <p className="mt-1 text-ink-dark-muted">
+            {member.attendanceStats?.shows ?? 0} shows · {member.attendanceStats?.noShows ?? 0} no-shows · {member.attendanceStats?.disputes ?? 0} disputes
+          </p>
+        </div>
+        <div className="card p-5 text-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Account</p>
+          {member.bannedAt ? (
+            <>
+              <p className="mt-2"><Badge tone="red">banned</Badge> {formatDateOnly(member.bannedAt, tz)}</p>
+              <p className="mt-1 text-ink-dark-muted">{member.banReason}</p>
+              {staff.role === "ADMIN" && (
+                <form action={unbanMemberAction} className="mt-3">
+                  <input type="hidden" name="memberId" value={member.id} />
+                  <button className="btn btn-outline !py-1 text-xs">Lift ban</button>
+                </form>
+              )}
+            </>
+          ) : staff.role === "ADMIN" ? (
+            <form action={banMemberAction} className="mt-2 flex flex-col gap-2">
+              <input type="hidden" name="memberId" value={member.id} />
+              <input type="hidden" name="back" value={backPath} />
+              <input name="reason" required minLength={3} placeholder="reason (required)" className="input !py-1 text-xs" />
+              <button className="btn btn-outline !py-1 text-xs text-red">Ban member</button>
+            </form>
+          ) : (
+            <p className="mt-2 text-ink-dark-muted">in good standing</p>
+          )}
+          {member.partnerClaimToken && <p className="mt-3 text-xs text-ink-dark-muted">partner token stored (Phase 7 verifies)</p>}
+        </div>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <WalletPools balance={balance} timezone={tz} />
@@ -136,6 +212,80 @@ export default async function MemberPage({
             </div>
           </form>
         )}
+      </div>
+
+      <div className="mt-8 grid gap-4 lg:grid-cols-2">
+        <div>
+          <SectionTitle>Fraud flags · {flags.length}</SectionTitle>
+          <Table>
+            <thead>
+              <tr>
+                <Th>Rule</Th>
+                <Th>Evidence</Th>
+                <Th>Status</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {flags.length === 0 && <EmptyRow colSpan={3}>No flags.</EmptyRow>}
+              {flags.map((f) => (
+                <tr key={f.id}>
+                  <Td>
+                    <Badge tone={f.status === "OPEN" ? "warn" : f.status === "APPROVED" ? "ok" : "red"}>{f.rule.toLowerCase().replace(/_/g, " ")}</Badge>
+                    <div className="mt-1 text-xs text-ink-dark-muted">{formatDate(f.createdAt, tz)}</div>
+                  </Td>
+                  <Td><pre className="max-w-[14rem] whitespace-pre-wrap break-all font-mono text-[11px] text-ink-dark-muted">{JSON.stringify(f.evidence)}</pre></Td>
+                  <Td>
+                    {f.status === "OPEN" ? (
+                      <form action={reviewFlagAction} className="flex gap-1">
+                        <input type="hidden" name="flagId" value={f.id} />
+                        <input type="hidden" name="back" value={backPath} />
+                        <button name="decision" value="APPROVED" className="btn btn-outline !px-2 !py-1 text-xs">Approve</button>
+                        <button name="decision" value="DENIED" className="btn btn-outline !px-2 !py-1 text-xs text-red">Deny</button>
+                      </form>
+                    ) : (
+                      <span className="text-xs text-ink-dark-muted">{f.status.toLowerCase()} · {f.reviewedBy?.name ?? f.reviewedBy?.email}{f.reviewNote ? ` · ${f.reviewNote}` : ""}</span>
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+        <div>
+          <SectionTitle>Devices · {devices.length}</SectionTitle>
+          <Table>
+            <thead>
+              <tr>
+                <Th>Fingerprint</Th>
+                <Th>Last seen</Th>
+                <Th>Shared with</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {devices.length === 0 && <EmptyRow colSpan={3}>No devices recorded yet.</EmptyRow>}
+              {devices.map(({ device, sharedWith }) => (
+                <tr key={device.id}>
+                  <Td>
+                    <span className="font-mono text-xs">{device.fingerprint.slice(0, 16)}…</span>
+                    <div className="max-w-[12rem] truncate text-[11px] text-ink-dark-muted" title={device.userAgent ?? ""}>{device.userAgent}</div>
+                  </Td>
+                  <Td className="whitespace-nowrap text-ink-dark-muted">{formatDate(device.lastSeenAt, tz)}</Td>
+                  <Td>
+                    {sharedWith.length === 0 ? (
+                      <span className="text-ink-dark-muted">nobody</span>
+                    ) : (
+                      <ul className="space-y-0.5 text-xs">
+                        {sharedWith.map((o) => (
+                          <li key={o.id}><Link href={`/admin/members/${o.id}`} className="hover:text-red">{o.email}</Link></li>
+                        ))}
+                      </ul>
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
       </div>
 
       <div className="mt-8 flex flex-wrap items-end justify-between gap-3">

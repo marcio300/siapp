@@ -172,6 +172,36 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   member-nav.tsx` `MemberHeader`/`Notice`; `requireMember()` in authz for actions. Backoffice `/admin/plans`
   ADMIN inline edits (tier keys, plan € + tourist keys, pack keys/€/on-sale) + sync action; member page
   membership card. Tests `tests/billing.test.ts` (13 → suite 43): fake Stripe + synthetic events.
+- **Done — Phase 3 (identity, onboarding, fraud foundation)**: `src/domain/identity/` — `onboarding.ts`
+  (`OnboardingSchema` zod, `ageAt`, `MIN_AGE=24`, `completeOnboarding(memberId, input)` → sets name/DOB/
+  `ageAttestedAt`/`cityId`/`onboardedAt`, records `Referral(PENDING)` by code (results `recorded|
+  unknown_code|self|already_referred`), stores `Member.partnerClaimToken` (JWT-shape check only — Phase 7
+  verifies)), `verification.ts` (`verificationStatus(member)` → emailVerified/onboarded/selfie/banned/
+  `canRedeem`/`nextStep` — Phase 5's eligibility step 1), `photos.ts` (`storeSelfie`, `storeIdPhoto` =
+  AES-256-GCM via `src/lib/media/crypto.ts` (`ID_PHOTO_KEY` base64 32B, dev derives from AUTH_SECRET),
+  `readIdPhoto`, `deleteIdPhoto`, `purgeIdPhotos` 30d); `src/lib/media/storage.ts` ported from EventOS
+  (+ `get`, `makeMemoryStorage`, `setMediaStorageForTests`). `src/domain/fraud/` — `disposable.ts`
+  (`isDisposableEmail`, vendored `disposable-domains.json` ~10k, subdomain match; refresh `pnpm
+  fraud:update-disposable-domains`; enforced in auth `signIn` callback + friendly check in the sign-in
+  action), `devices.ts` (`recordDevice` upsert + DEVICE_MAX_ACCOUNTS flag when accounts > setting;
+  `deviceOverlap`), `evaluate.ts` (`evaluate(memberId, offerId, {db?, now?, redemptionId?})` → `{decision,
+  fired}`; rules DEVICE_MAX_ACCOUNTS / VELOCITY_FIRST_HOUR (<1h, live redemptions ≥ setting) /
+  VELOCITY_PRIVATE_SALE (<24h, setting `velocity_private_sale_first_day_max`) / OVERLAP (live redemption,
+  other event, ±`overlap_tolerance_hours`) / SAME_CARD (`PaymentMethodFingerprint` shared > `same_card_max_
+  accounts`); writes OPEN flags via `flags.ts` `openFlag` (one per member+rule+redemption, evidence updated)),
+  `cards.ts` (`charge.succeeded` → `recordCardFingerprint`; `registerFraudWebhooks()` in the route),
+  `review.ts` (`reviewFlag` APPROVED releases HELD→ACTIVE only when no other OPEN flag on the redemption,
+  DENIED → HELD→DENIED; `banMember` = bannedAt+reason, open flags DENIED, HELD denied, sessions deleted;
+  `unbanMember`). Schema: `Member.onboardedAt/partnerClaimToken/partnerClaimTokenAt/banReason`,
+  `PaymentMethodFingerprint` — migration `20261028180000_identity_fraud`. Billing: tourist checkout now
+  requires `idPhotoUploadedAt`. Member app: `/r/[code]` route handler (cookie `siapp_ref` 30d),
+  `/app/onboarding` (+actions), `/app/profile` (selfie `capture="user"`, ID photo, delete), `src/app/app/
+  layout.tsx` mounts `DeviceFingerprint` (client, FingerprintJS v5 MIT, once per tab via sessionStorage →
+  `recordDeviceAction`), `requireOnboardedMember(next)` in authz gates /app, /app/wallet, /app/membership,
+  /app/profile. Backoffice: `/admin/fraud` (+actions `reviewFlagAction` OPS, `banMemberAction`/`unban` ADMIN),
+  member page identity/ID-photo/attendance/account cards + flags + devices tables, `/api/admin/id-photo/
+  [memberId]` (OPS+, decrypts, no-store). Jobs `pnpm jobs:purge-id-photos`. Tests `tests/identity.test.ts`
+  (7) + `tests/fraud.test.ts` (7) → suite 57.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

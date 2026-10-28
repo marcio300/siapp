@@ -157,3 +157,62 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
   `pricing.price_details.price`. The handlers accept both old and new shapes.
 - Tests that run the grant/expiry jobs must pass `memberId`, or they sweep every member in the shared
   test database.
+
+## Phase 3 — Identity, onboarding, fraud foundation (2026-10-28)
+
+**Shipped**
+
+- Onboarding at `/app/onboarding`: name, date of birth (day/month/year selects), explicit 24+ attestation,
+  home city (active cities only), optional referral code (prefilled from the `/r/[code]` link cookie),
+  optional partner claim token. Under-24 is rejected server-side ("Sorry, it's a 24+ party."). Every
+  member page is gated until the profile is complete.
+- Referral links: `/r/CODE` stores the code in a cookie for 30 days; onboarding records a PENDING
+  `Referral` (vesting is Phase 7). Own code and unknown codes are reported, not recorded.
+- Disposable email domains: vendored community list (~10k domains, subdomain-aware), checked on the
+  sign-in page (friendly message) and enforced in the NextAuth callback. Refresh with
+  `pnpm fraud:update-disposable-domains`.
+- Profile at `/app/profile`: selfie (camera on mobile, upload fallback) and tourist ID photo. Selfie is
+  required before the first redemption and shows on the scanner; ID photo is **AES-256-GCM encrypted at
+  rest**, viewable only through a staff route, required to buy the tourist pass, purged after 30 days
+  (`pnpm jobs:purge-id-photos`). Media storage adapter ported from EventOS (Vercel Blob / local disk).
+- Device fingerprint (open-source FingerprintJS) on every member page load, once per tab session →
+  `Device` upsert; more than `device_max_accounts` accounts on one fingerprint flags the member.
+- `src/domain/fraud/evaluate(memberId, offerId)` → ALLOW | REVIEW with rules DEVICE_MAX_ACCOUNTS,
+  VELOCITY_FIRST_HOUR, VELOCITY_PRIVATE_SALE, OVERLAP (events starting within
+  `overlap_tolerance_hours`), SAME_CARD (Stripe card fingerprint across accounts, captured from
+  `charge.succeeded`). Every fired rule writes an OPEN `FraudFlag` with evidence; one open flag per
+  (member, rule, redemption).
+- Backoffice: Fraud queue (open/reviewed, evidence, approve/deny with note, ban with reason), member
+  page gained identity card (selfie, verification badges, DOB/attestation), ID photo viewer,
+  attendance stats, devices with "shared with", flags with inline review, ban/lift ban (ADMIN).
+- Tests: 14 identity + fraud checks (57 total): disposable matching, age edge cases, onboarding
+  rules/referral/partner token, encryption round trip, selfie replace, ID photo encrypt/read/gate/purge,
+  each fraud rule positive and negative, card webhook, review/ban lifecycle.
+
+**Decisions**
+
+- The member row exists before onboarding (magic link), so `onboardedAt` is the gate, not `cityId`.
+- OVERLAP lives in `evaluate` as a REVIEW rule, per the build plan; the spec's §7 lists it as a hard
+  eligibility reject. Phase 5 decides which (the evaluation exposes the fired rules, so it can refuse
+  outright on OVERLAP).
+- Approving a flag linked to a HELD redemption releases it only once every open flag on that redemption
+  is approved; denying any flag denies the redemption. Refunding keys of a DENIED redemption is Phase 5's.
+- Banning closes all open flags as DENIED, denies HELD redemptions, kills sessions and blocks sign-in.
+- Partner claim tokens are stored raw on the member (shape-checked only); Phase 7 verifies and consumes.
+- ID photos are served decrypted through `/api/admin/id-photo/[memberId]` (OPS+), never cached. Key from
+  `ID_PHOTO_KEY` (required in production); dev derives one from `AUTH_SECRET`.
+- Two new settings: `velocity_private_sale_first_day_max` (1) and `same_card_max_accounts` (1).
+
+**Spec deviations**
+
+- None. Fingerprint library: FingerprintJS v5 is MIT again, so it's the open-source choice.
+
+**Open**
+
+- Account deletion flow (Phase 10). Emails (Phase 9). Velocity thresholds are placeholders (spec §17).
+
+**Gotchas**
+
+- A server component cannot set cookies in Next 15 — the referral landing is a route handler.
+- Headless browsers share one fingerprint, so repeated local test runs trip the shared-device rule on
+  purpose-built test accounts; that's the rule working, not a bug.

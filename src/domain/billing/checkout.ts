@@ -145,7 +145,8 @@ export async function startTouristPassCheckout(
   if (!price.stripePriceId) throw new BillingError("The tourist pass is not synced to Stripe yet (run pnpm stripe:sync-prices)");
   const membership = await getMembership(memberId, { db });
   if (membership.isPaid) throw new BillingError("You already have an active membership");
-  // TODO Phase 3: require member.idPhotoUploadedAt (spec §3 "ID photo required at purchase").
+  // Spec §3: ID photo required at purchase (uploaded on /app/profile, reviewed in the backoffice).
+  if (!member.idPhotoUploadedAt) throw new BillingError("Upload a photo of your ID first — the weekly pass needs it");
   const customer = await ensureStripeCustomer(memberId, { db });
   const session = await billingStripe().checkout.sessions.create({
     mode: "payment",

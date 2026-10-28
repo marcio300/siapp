@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireMemberPage } from "@/lib/authz";
+import { requireOnboardedMember } from "@/lib/authz";
 import { signOut } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getBalance } from "@/domain/keys";
@@ -10,8 +10,7 @@ import { MemberHeader } from "@/components/member-nav";
 
 /** Member home. Discovery (this week in your city) arrives in Phase 5. */
 export default async function MemberHome() {
-  const user = await requireMemberPage();
-  const member = await prisma.member.findUniqueOrThrow({ where: { id: user.id }, include: { city: true } });
+  const member = await requireOnboardedMember("/app");
   const [balance, membership] = await Promise.all([getBalance(member.id), getMembership(member.id)]);
 
   async function doSignOut() {

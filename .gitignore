@@ -33,3 +33,6 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+
+# member photos in local dev
+/public/uploads

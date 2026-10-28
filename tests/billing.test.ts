@@ -375,6 +375,8 @@ describe("billing", () => {
     it("one-off checkout → 7-day TOURIST_WEEK subscription without a Stripe subscription, expired by the job", async () => {
       const m = await createMember();
       await ensureFreeSubscription(m.id);
+      await expect(startTouristPassCheckout(m.id)).rejects.toThrow(/ID first/); // spec §3: ID photo required
+      await prisma.member.update({ where: { id: m.id }, data: { idPhotoUrl: "memory://id", idPhotoUploadedAt: new Date() } });
       await startTouristPassCheckout(m.id);
       const params = fake.calls.sessions.at(-1)!;
       expect(params.mode).toBe("payment");

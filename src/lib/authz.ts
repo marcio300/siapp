@@ -78,6 +78,19 @@ export async function requireMember(): Promise<{ id: string; email: string }> {
   return { id: session.user.id, email: session.user.email ?? "" };
 }
 
+/**
+ * Member pages behind onboarding: redirects to sign-in when anonymous and to
+ * /app/onboarding until the profile (name, DOB + 24+ attestation, city) is
+ * complete. Returns the full Member row.
+ */
+export async function requireOnboardedMember(next = "/app") {
+  const user = await requireMemberPage(next);
+  const member = await prisma.member.findUnique({ where: { id: user.id }, include: { city: true } });
+  if (!member) redirect("/sign-in");
+  if (!member.onboardedAt) redirect("/app/onboarding");
+  return member;
+}
+
 /** For member-facing pages: the signed-in member or a redirect to sign-in. */
 export async function requireMemberPage(next = "/app"): Promise<{ id: string; email: string }> {
   const session = await auth();

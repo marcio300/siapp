@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { signOut } from "@/lib/auth";
-import { requireMemberPage } from "@/lib/authz";
+import { requireOnboardedMember } from "@/lib/authz";
 import { getMembership } from "@/domain/billing";
 import { getBalance, getLedger } from "@/domain/keys";
 import { formatDate, formatDateOnly, formatMoney } from "@/lib/format";
@@ -20,9 +20,8 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default async function WalletPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const user = await requireMemberPage("/app/wallet");
+  const member = await requireOnboardedMember("/app/wallet");
   const { error } = await searchParams;
-  const member = await prisma.member.findUniqueOrThrow({ where: { id: user.id }, include: { city: true } });
   const tz = member.city?.timezone;
   const [balance, membership, ledger, packs] = await Promise.all([
     getBalance(member.id),

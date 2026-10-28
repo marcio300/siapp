@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "./db";
+import { generateReferralCode } from "@/lib/referral-code";
 
 let n = 0;
 const uid = () => `${Date.now().toString(36)}${(n++).toString(36)}`;
@@ -15,7 +16,7 @@ export async function createCity() {
 export async function createMember(email = `m-${uid()}@test.siapp`) {
   const city = await createCity();
   return prisma.member.create({
-    data: { email, cityId: city.id, referralCode: uid().toUpperCase().padEnd(8, "X").slice(0, 8) + uid().slice(-2) },
+    data: { email, cityId: city.id, referralCode: generateReferralCode() },
   });
 }
 

@@ -42,6 +42,8 @@ See `.env.example` — every variable is documented there. The important ones:
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe; the webhook secret comes from `stripe listen` or the dashboard endpoint |
 | `SEED_ADMIN_EMAIL` | The one ADMIN staff user created by the seed |
 | `TEST_DATABASE_URL` | Optional: run the test suite against this database instead of the embedded one |
+| `ID_PHOTO_KEY` | Base64 32-byte key for tourist ID photos at rest (required in production) |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob for selfies/ID photos; unset = `public/uploads/` on disk |
 
 ## Testing
 
@@ -92,7 +94,7 @@ src/app/           App Router: /sign-in, /app (member), /admin (backoffice), /ap
 src/lib/           db, auth (+ auth-adapter), authz guard, email (+ templates), stripe, stripe-webhook, settings
 src/components/    wordmark, key icon, backoffice primitives (table, badge, stat card, page header)
 src/domain/        business rules by module: keys (ledger) …
-scripts/jobs/      cron entry points (reconcile-balances, monthly-grants, expire-periods; wired in Phase 9)
+scripts/jobs/      cron entry points (reconcile-balances, monthly-grants, expire-periods, purge-id-photos; wired in Phase 9)
 tests/             Vitest suite + global DB setup
 ```
 
@@ -108,5 +110,9 @@ tests/             Vitest suite + global DB setup
   and the tourist pass, webhook-only fulfilment, FREE tier as a real subscription, monthly grants on
   quarterly/yearly plans, plan change/cancel), member Membership + Wallet screens, editable Plans & key
   packs with "Sync to Stripe". Jobs: `pnpm jobs:monthly-grants`, `pnpm jobs:expire-periods`.
-- Next: **Phase 3 — identity, onboarding, fraud foundation**, see `docs/BUILD_PLAN.md`.
+- **Phase 3 — done**: onboarding (24+ attestation, city, referral link + code, partner token stub),
+  disposable-email blocking, selfie + encrypted tourist ID photo (30-day purge), device fingerprint,
+  `src/domain/fraud/evaluate` (device / velocity / overlap / same-card rules → flags), backoffice fraud
+  queue + member identity/devices/flags/ban.
+- Next: **Phase 4 — producers, events, offers (backoffice)**, see `docs/BUILD_PLAN.md`.
 - The human-readable record of every phase (decisions, deviations, gotchas) is `docs/BUILD_LOG.md`.

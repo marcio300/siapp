@@ -5,6 +5,7 @@ const LINKS = [
   { href: "/app", label: "Tonight" },
   { href: "/app/wallet", label: "Wallet" },
   { href: "/app/membership", label: "Membership" },
+  { href: "/app/profile", label: "Profile" },
 ];
 
 /** Member app header: wordmark + the three Phase 2 screens. Sign-out is a form the pages render. */

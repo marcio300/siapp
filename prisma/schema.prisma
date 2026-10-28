@@ -172,7 +172,11 @@ model Member {
   idPhotoUploadedAt DateTime?
   cityId          String?
   referralCode    String    @unique
+  onboardedAt     DateTime? // profile complete (name, DOB + 24+ attestation, city) — gates the member app
+  partnerClaimToken   String? // partner (ELL) claim token entered at onboarding; verified + consumed in Phase 7
+  partnerClaimTokenAt DateTime?
   bannedAt        DateTime?
+  banReason       String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -191,8 +195,25 @@ model Member {
   fraudFlags       FraudFlag[]
   attendanceStats  AttendanceStats?
   stripeCustomer   StripeCustomer?
+  cardFingerprints PaymentMethodFingerprint[]
 
   @@index([cityId])
+}
+
+// Stripe card fingerprints seen per member (from charge.succeeded) — the SAME_CARD fraud rule.
+model PaymentMethodFingerprint {
+  id          String   @id @default(cuid())
+  memberId    String
+  fingerprint String
+  brand       String?
+  last4       String?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, fingerprint])
+  @@index([fingerprint])
 }
 
 model StripeCustomer {

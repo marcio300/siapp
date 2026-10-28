@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { signOut } from "@/lib/auth";
-import { requireMemberPage } from "@/lib/authz";
+import { requireOnboardedMember } from "@/lib/authz";
 import { getMembership, isRecurring, keysForPlan } from "@/domain/billing";
 import { formatDateOnly, formatMoney } from "@/lib/format";
 import { KeyIcon } from "@/components/key-icon";
@@ -10,9 +10,8 @@ import { cancelRenewalAction, choosePlanAction, portalAction, resumeRenewalActio
 const PERIOD_LABEL = { MONTHLY: "month", QUARTERLY: "quarter", YEARLY: "year", TOURIST_WEEK: "week" } as const;
 
 export default async function MembershipPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const user = await requireMemberPage("/app/membership");
+  const member = await requireOnboardedMember("/app/membership");
   const sp = await searchParams;
-  const member = await prisma.member.findUniqueOrThrow({ where: { id: user.id }, include: { city: true } });
   const membership = await getMembership(member.id);
   const sub = membership.subscription;
   const tz = member.city?.timezone;
