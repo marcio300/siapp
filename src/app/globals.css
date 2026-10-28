@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+/*
+ * SIAPP design tokens — docs/BRAND.md. The member app is dark by default;
+ * the backoffice and scanner use the light variant (cream background, ink
+ * text, the same red). Red is an accent: never a surface larger than a button.
+ */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-archivo), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-instrument), Georgia, "Times New Roman", serif;
+
+  /* Brand */
+  --color-bg: #141414;
+  --color-bg-elevated: #1e1e1e;
+  --color-ink: #f3ebdd;
+  --color-ink-muted: #b7b0a3;
+  --color-red: #ff1e00;
+  --color-red-soft: #ff6a4d;
+  --color-line: #2a2a2a;
+  --color-ok: #3ddc97;
+  --color-warn: #ffb020;
+
+  /* Light (backoffice / scanner) */
+  --color-cream: #f3ebdd;
+  --color-cream-elevated: #faf6ee;
+  --color-ink-dark: #141414;
+  --color-ink-dark-muted: #5f5a52;
+  --color-line-light: #e2d9c8;
+
+  --shadow-card: 0 1px 2px 0 rgb(20 20 20 / 0.05), 0 4px 16px -4px rgb(20 20 20 / 0.08);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+@layer components {
+  /* ---------- Shared ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-lg);
+    padding: 0.5rem 0.875rem;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: 1.25rem;
+    cursor: pointer;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+  .btn:focus-visible {
+    outline: 2px solid var(--color-red);
+    outline-offset: 2px;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-red);
+    color: white;
+  }
+  .btn-primary:hover {
+    background: var(--color-red-soft);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: calc(infinity * 1px);
+    padding: 0.125rem 0.625rem;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    background: rgb(20 20 20 / 0.08);
+    color: var(--color-ink-dark-muted);
+  }
+  .badge-ok {
+    background: rgb(61 220 151 / 0.18);
+    color: #137a52;
+  }
+  .badge-warn {
+    background: rgb(255 176 32 / 0.2);
+    color: #8a5a00;
+  }
+  .badge-red {
+    background: rgb(255 30 0 / 0.12);
+    color: #c21700;
+  }
+
+  /* ---------- Dark member surfaces ---------- */
+  .night-card {
+    border-radius: var(--radius-2xl);
+    border: 1px solid var(--color-line);
+    background: var(--color-bg-elevated);
+  }
+  .input-dark {
+    width: 100%;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-line);
+    background: var(--color-bg);
+    padding: 0.625rem 0.875rem;
+    font-size: var(--text-base);
+    color: var(--color-ink);
+  }
+  .input-dark::placeholder {
+    color: var(--color-ink-muted);
+  }
+  .input-dark:focus {
+    outline: none;
+    border-color: var(--color-red);
+  }
+
+  /* ---------- Light backoffice surfaces ---------- */
+  .office {
+    min-height: 100vh;
+    background: var(--color-cream);
+    color: var(--color-ink-dark);
+    color-scheme: light;
+  }
+  .card {
+    border-radius: var(--radius-2xl);
+    border: 1px solid var(--color-line-light);
+    background: white;
+    box-shadow: var(--shadow-card);
+  }
+  .btn-outline {
+    border: 1px solid var(--color-line-light);
+    background: white;
+    color: var(--color-ink-dark);
+  }
+  .btn-outline:hover {
+    background: var(--color-cream-elevated);
+  }
+  .btn-ghost {
+    color: var(--color-ink-dark-muted);
+  }
+  .btn-ghost:hover {
+    background: rgb(20 20 20 / 0.06);
+    color: var(--color-ink-dark);
+  }
+  .input {
+    width: 100%;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-line-light);
+    background: white;
+    padding: 0.5rem 0.75rem;
+    font-size: var(--text-sm);
+    line-height: 1.25rem;
+    color: var(--color-ink-dark);
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--color-red);
+    box-shadow: 0 0 0 3px rgb(255 30 0 / 0.12);
+  }
+  .label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-ink-dark-muted);
+  }
+
+  /* Data tables (ported from EventOS .tbl) */
+  .tbl {
+    width: 100%;
+    font-size: var(--text-sm);
+    border-collapse: collapse;
+  }
+  .tbl thead th {
+    padding: 0.625rem 1rem;
+    text-align: left;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-ink-dark-muted);
+    background: var(--color-cream-elevated);
+    border-bottom: 1px solid var(--color-line-light);
+  }
+  .tbl tbody td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-line-light);
+    vertical-align: top;
+  }
+  .tbl tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .tbl tbody tr:hover {
+    background: var(--color-cream-elevated);
+  }
+}

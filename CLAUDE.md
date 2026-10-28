@@ -90,3 +90,41 @@ familiar.
 
 Producer portal, native apps, partial cancellation refunds, grace period after redemption, reputation
 score effects on access (we only *record* attendance/no-shows), cities beyond Lisbon, SMS.
+
+## Build progress (keep updated as phases land)
+
+- **Done — Phase 0 (scaffold + ported shell)**: pnpm project (`node-linker=hoisted` in `.npmrc` so the
+  engine-less Prisma client lands at `node_modules/.prisma/client`, which `next.config.ts` traces into
+  Vercel functions exactly like EventOS). Ported from EventOS: tooling config, Prisma singleton
+  (`src/lib/db.ts`, engineType `client` + `@prisma/adapter-pg`), NextAuth email magic link ONLY with the
+  Prisma adapter pointed at `Member` (`src/lib/auth-adapter.ts` maps `user`→`member`, overrides
+  createUser to mint `referralCode`; `Account`/`Session`/`VerificationToken` hang off Member), backoffice
+  guard (`src/lib/authz.ts`: `requireStaffPage/requireStaff(minRole)` with ADMIN ⊃ OPS ⊃ DOOR resolved
+  from `StaffUser` by email; test seam `TEST_STAFF_EMAIL`), Stripe client (`src/lib/stripe.ts`) + webhook
+  route with signature check and `StripeEvent` idempotency (`src/lib/stripe-webhook.ts`: create row →
+  `processedAt` set = replay no-op; handler error stored + rethrown → 500 → Stripe retries → handler
+  re-runs; `registerStripeHandler(type, fn)` is where Phase 2 plugs billing in), Resend email with console
+  fallback (`src/lib/email.ts`) + brand base template (`src/lib/email/template.ts` `renderEmail`), admin
+  shell (`/admin` layout/nav + dashboard, read-only Plans & key packs, read-only Settings) with table
+  primitives in `src/components/backoffice/`. One `/sign-in` for everyone; `/` routes staff → `/admin`,
+  members → `/app` (placeholder wallet). Seed (`prisma/seed-data.ts` `runSeed`, CLI `prisma/seed.ts`):
+  Lisbon, 4 tiers (FREE 2 / SOCIAL 30 / REGULAR 80 / PLUS 150 keys), FREE×MONTHLY (€0) + 3 paid tiers ×
+  monthly/quarterly(−10%)/yearly(10×) + TOURIST_WEEK (on REGULAR, `Plan.keysPerPeriod=50`, €25), packs
+  20/€8 + 50/€20, the 9 DATA_MODEL settings, ADMIN staff + Member from `SEED_ADMIN_EMAIL`; create-only
+  upserts so edits survive re-runs. `scripts/sync-stripe-prices.ts` (Products/Prices from Plan/PlanPrice/
+  KeyPack, immutable-price rotation + archive, idempotency keys, `--dry-run`). Vitest on a REAL Postgres
+  (`tests/global-setup.ts`: `TEST_DATABASE_URL` e.g. a Neon branch, else embedded PG on 5434) — 16 checks:
+  seed + idempotency, webhook replay/retry/signature (invariant 11), Stripe sync, adapter magic-link
+  round trip, email template. `pnpm dev:local` = embedded PG on 5433 + migrate + seed + next dev.
+  Migrations: `prisma/migrations/0_init` applied by engine-less `scripts/db-deploy.ts` (PG 18-safe).
+- **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
+  creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
+  "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE
+  only gets a MONTHLY plan. shadcn/ui not installed yet (no components needed; add when the member app
+  starts). `vercel.json` has no crons yet (Phase 9).
+- **Gotchas**: embedded-postgres' Linux tarball lacks the `lib*.so.N` symlinks its binaries need —
+  `scripts/embedded-pg.ts` recreates them on start. When running as root (cloud sandboxes) the data dirs
+  must be owned by the `postgres` user: `mkdir -p .devdb .testdb && chown postgres .devdb .testdb`.
+  `$queryRaw` on catalog columns of type `name` fails with the engine-less client — cast to `::text`.
+  `next build` and `next dev` share `.next`; never run both at once. Don't `pkill -f "next dev"` from a
+  shell whose own command line contains that string.

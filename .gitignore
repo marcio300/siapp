@@ -1,7 +1,35 @@
-node_modules
-.next
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+build/
+dist/
+
+# env & secrets
 .env
 .env.*
 !.env.example
+*.pem
+
+# logs
+*.log
+
+# testing
+coverage/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# embedded Postgres data (pnpm dev:local / pnpm test)
+.devdb/
+.testdb/
+
+# misc
+*.tsbuildinfo
+next-env.d.ts
 .vercel
-coverage

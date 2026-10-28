@@ -1,0 +1,72 @@
+# SIAPP CI — typecheck, migrations + seed, Vitest against a real Postgres,
+# then a production build. Runs on every push and pull request.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: siapp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/siapp
+      # The test suite truncates tables, so it gets its own database on the same server.
+      TEST_DATABASE_URL: postgresql://postgres:password@localhost:5432/siapp_test
+      TZ: Europe/Lisbon
+      SEED_ADMIN_EMAIL: ci-admin@siapp.test
+      AUTH_SECRET: ci-only-not-a-real-secret
+      APP_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma client
+        run: pnpm exec prisma generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Migrations + seed
+        run: pnpm db:deploy && pnpm db:seed
+
+      - name: Create test database
+        run: psql "$DATABASE_URL" -c 'CREATE DATABASE siapp_test'
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

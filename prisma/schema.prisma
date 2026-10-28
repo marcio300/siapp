@@ -1,9 +1,12 @@
-// SIAPP — draft Prisma schema. Derived from docs/DATA_MODEL.md and docs/PRODUCT_SPEC.md.
-// Phase 0 adds the NextAuth adapter tables (Account, Session, VerificationToken) attached to Member,
-// ported from EventOS. Money is integer cents; all DateTime columns are UTC.
+// SIAPP — Prisma schema. Derived from docs/DATA_MODEL.md and docs/PRODUCT_SPEC.md.
+// The NextAuth adapter tables (Account, Session, VerificationToken) hang off Member, ported from
+// EventOS. Money is integer cents; all DateTime columns are UTC.
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  // Engine-less client: queries compile in-process (WASM query compiler) and
+  // run through the pg driver adapter (see src/lib/db.ts). Mirrors EventOS.
+  engineType = "client"
 }
 
 datasource db {
@@ -147,14 +150,19 @@ model City {
   producers  Producer[]
   events     Event[]
   planPrices PlanPrice[]
+
+  @@unique([country, name])
 }
 
 // ───────────────────────── Members ─────────────────────────
 
+// Member is also the NextAuth user (src/lib/auth.ts). `emailVerified` keeps the adapter's field
+// name. `cityId` is null until onboarding (Phase 3) records the member's home city — the magic-link
+// flow creates the row before any profile data exists.
 model Member {
   id              String    @id @default(cuid())
   email           String    @unique
-  emailVerifiedAt DateTime?
+  emailVerified   DateTime?
   name            String?
   dateOfBirth     DateTime?
   ageAttestedAt   DateTime? // explicit 24+ attestation at signup
@@ -162,13 +170,15 @@ model Member {
   selfieUploadedAt DateTime?
   idPhotoUrl      String? // tourists only; encrypted at rest, purged after 30 days
   idPhotoUploadedAt DateTime?
-  cityId          String
+  cityId          String?
   referralCode    String    @unique
   bannedAt        DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  city             City              @relation(fields: [cityId], references: [id])
+  city             City?             @relation(fields: [cityId], references: [id])
+  accounts         Account[]
+  sessions         Session[]
   subscriptions    Subscription[]
   keyTransactions  KeyTransaction[]
   keyBalance       KeyBalance?
@@ -200,6 +210,48 @@ model AttendanceStats {
   member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }
 
+// ───────────────────────── NextAuth (Prisma adapter, attached to Member) ─────────────────────────
+// The adapter reads the relation field `user` on Account/Session, so keep those names.
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user Member @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user Member @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 // ───────────────────────── Tiers, plans, packs ─────────────────────────
 
 model Tier {
@@ -216,11 +268,13 @@ model Tier {
 }
 
 model Plan {
-  id            String        @id @default(cuid())
-  tierId        String
-  period        BillingPeriod
+  id              String        @id @default(cuid())
+  tierId          String
+  period          BillingPeriod
+  name            String // shown in UI and used as the Stripe Product name
+  keysPerPeriod   Int? // null = tier.keysPerMonth (granted monthly); TOURIST_WEEK sets its own amount
   stripeProductId String?
-  isActive      Boolean       @default(true)
+  isActive        Boolean       @default(true)
 
   tier          Tier           @relation(fields: [tierId], references: [id])
   prices        PlanPrice[]
@@ -245,6 +299,7 @@ model PlanPrice {
 
 model KeyPack {
   id              String  @id @default(cuid())
+  code            String  @unique // e.g. PACK_20 — stable handle for seeds and Stripe sync
   name            String
   keys            Int
   currency        String
@@ -618,11 +673,13 @@ model StaffUser {
   fraudReviews   FraudFlag[]
 }
 
-// Idempotency for Stripe webhooks: store every event id, skip duplicates.
+// Idempotency for Stripe webhooks: store every event id, skip duplicates (src/lib/stripe-webhook.ts).
 model StripeEvent {
   id          String    @id // Stripe event id
   type        String
   receivedAt  DateTime  @default(now())
   processedAt DateTime?
   error       String?
+
+  @@index([type, receivedAt])
 }
