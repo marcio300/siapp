@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { isReferralCodeActive } from "@/domain/referrals/status";
 import { prisma as defaultPrisma } from "@/lib/db";
 
 /**
@@ -51,13 +52,13 @@ export const OnboardingSchema = z.object({
 
 export type OnboardingInput = z.input<typeof OnboardingSchema>;
 
-/** Loose JWT shape check; signature verification lands in Phase 7. */
+/** Loose JWT shape check at onboarding; the claim itself (signature, promo) is src/domain/partners. */
 export function looksLikeClaimToken(token: string): boolean {
   return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token);
 }
 
 export interface OnboardingResult {
-  referral: "none" | "recorded" | "unknown_code" | "self" | "already_referred";
+  referral: "none" | "recorded" | "unknown_code" | "inactive_code" | "self" | "already_referred";
   partnerClaim: "none" | "stored" | "invalid";
 }
 
@@ -83,13 +84,15 @@ export async function completeOnboarding(
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
   const result: OnboardingResult = { referral: "none", partnerClaim: "none" };
 
-  // Referral: recorded PENDING now; vesting rules and rejection are Phase 7's job.
+  // Referral: recorded PENDING now when the referrer's code is active (paid, non-tourist — spec §9);
+  // vesting and rejection are the daily job's work (src/domain/referrals).
   if (input.referralCode) {
     if (input.referralCode === member.referralCode) {
       result.referral = "self";
     } else {
       const referrer = await db.member.findUnique({ where: { referralCode: input.referralCode } });
       if (!referrer) result.referral = "unknown_code";
+      else if (!(await isReferralCodeActive(referrer.id, { db }))) result.referral = "inactive_code";
       else {
         const existing = await db.referral.findUnique({ where: { inviteeId: memberId } });
         if (existing) result.referral = "already_referred";

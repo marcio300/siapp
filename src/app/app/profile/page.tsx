@@ -24,7 +24,10 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           you&apos;re in. one more thing: a selfie — it&apos;s what the door sees when they scan you.
           {sp.referral === "unknown" && " (that referral code didn't match anyone, so we skipped it.)"}
           {sp.referral === "self" && " (nice try — you can't refer yourself.)"}
+          {sp.referral === "inactive" && " (that referral code isn't active right now — your friend needs a paid plan.)"}
           {sp.partner === "invalid" && " (the partner code didn't look right, so we skipped it.)"}
+          {sp.partner && sp.partner !== "invalid" && ` partner membership claimed — ${sp.partner}.`}
+          {sp.partnerError && ` (partner token: ${sp.partnerError} — you can retry from Membership.)`}
         </Notice>
       )}
       {sp.error && <Notice tone="error">{sp.error}</Notice>}

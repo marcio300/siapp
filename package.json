@@ -24,7 +24,8 @@
     "fraud:update-disposable-domains": "tsx scripts/update-disposable-domains.ts",
     "jobs:mark-no-shows": "tsx scripts/jobs/mark-no-shows.ts",
     "jobs:expire-pending-payments": "tsx scripts/jobs/expire-pending-payments.ts",
-    "jobs:expire-waitlist-claims": "tsx scripts/jobs/expire-waitlist-claims.ts"
+    "jobs:expire-waitlist-claims": "tsx scripts/jobs/expire-waitlist-claims.ts",
+    "jobs:vest-referrals": "tsx scripts/jobs/vest-referrals.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

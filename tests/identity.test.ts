@@ -55,6 +55,9 @@ describe("identity", () => {
 
     it("completes the profile, records a referral once and stores a partner token", async () => {
       const referrer = await createMember();
+      // A code is only active while the referrer is on a paid, non-tourist plan (spec §9).
+      const paidPlan = await prisma.plan.findFirstOrThrow({ where: { period: "MONTHLY", tier: { code: "SOCIAL" } } });
+      await prisma.subscription.create({ data: { memberId: referrer.id, planId: paidPlan.id, status: "ACTIVE", currentPeriodStart: new Date(), currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000), stripeSubscriptionId: `sub_${referrer.id}`, firstPaidAt: new Date() } });
       const m = await createMember();
       const city = await prisma.city.findFirstOrThrow({ where: { isActive: true } });
       const token = "eyJhbGciOiJSUzI1NiJ9.eyJzb3VyY2UiOiJFTEwifQ.c2ln";

@@ -27,6 +27,17 @@ export async function completeOnboardingAction(formData: FormData): Promise<void
   const notes: string[] = [];
   if (result.referral === "unknown_code") notes.push("referral=unknown");
   if (result.referral === "self") notes.push("referral=self");
+  if (result.referral === "inactive_code") notes.push("referral=inactive");
   if (result.partnerClaim === "invalid") notes.push("partner=invalid");
+  if (result.partnerClaim === "stored") {
+    const { PartnerError, claimStoredToken } = await import("@/domain/partners");
+    try {
+      const claimed = await claimStoredToken(member.id);
+      if (claimed) notes.push(`partner=${encodeURIComponent(`${claimed.community.name}: ${claimed.applied}`)}`);
+    } catch (e) {
+      if (e instanceof PartnerError) notes.push(`partnerError=${encodeURIComponent(e.message)}`);
+      else console.error("partner claim at onboarding failed:", e);
+    }
+  }
   redirect(`/app/profile?welcome=1${notes.length ? `&${notes.join("&")}` : ""}`);
 }

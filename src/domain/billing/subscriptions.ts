@@ -243,6 +243,36 @@ export async function activateTouristPass(
   return sub;
 }
 
+/**
+ * Partner promo (spec §11): a paid tier for N months with no Stripe
+ * subscription. Keys land monthly like a quarterly plan (`nextGrantAt`), the
+ * period has a fixed end (runExpirePeriods drops the member back to FREE) and
+ * `firstPaidAt` stays null — a promo never counts for referral vesting. A
+ * paying member can't stack a promo on top (they get the coupon kind instead).
+ */
+export async function startPromoPeriod(
+  input: { memberId: string; tierCode: Tier["code"]; months: number; note?: string },
+  opts: Opts = {},
+): Promise<SubscriptionWithPlan> {
+  const db = opts.db ?? defaultPrisma;
+  const now = opts.now ?? new Date();
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 24) throw new BillingError("Promo months must be 1–24");
+  if (input.tierCode === "FREE") throw new BillingError("A promo needs a paid tier");
+  const plan = await db.plan.findFirst({ where: { period: "MONTHLY", isActive: true, tier: { code: input.tierCode } }, include: { tier: true } });
+  if (!plan) throw new BillingError(`No monthly plan for tier ${input.tierCode}`);
+  const stripeSub = await db.subscription.findFirst({ where: { memberId: input.memberId, status: { in: LIVE }, stripeSubscriptionId: { not: null } } });
+  if (stripeSub) throw new BillingError("You already have a paid plan — the promo can't be added on top");
+  const periodEnd = addMonths(now, input.months);
+  const { expiresAt, nextGrantAt } = monthlyGrantWindow(now, periodEnd);
+  const sub = await db.subscription.create({
+    data: { memberId: input.memberId, planId: plan.id, status: "ACTIVE", currentPeriodStart: now, currentPeriodEnd: periodEnd, nextGrantAt },
+    include: { plan: { include: { tier: true } } },
+  });
+  await supersedeLocalSubscriptions(input.memberId, sub.id, { db, now });
+  await grantForSubPeriod(sub, now, expiresAt, { db, now });
+  return sub;
+}
+
 export async function markPastDue(stripeSubscriptionId: string, opts: Opts = {}): Promise<boolean> {
   const db = opts.db ?? defaultPrisma;
   const res = await db.subscription.updateMany({
@@ -331,8 +361,9 @@ export async function runMonthlyGrants(opts: JobOpts = {}): Promise<{ granted: n
     const grantStart = sub.nextGrantAt!;
     await expirePlanKeys(sub.memberId, grantStart, { db, now });
 
-    if (!sub.stripeSubscriptionId && sub.plan.period === "MONTHLY") {
-      // FREE (and any local monthly plan): the period itself rolls forward.
+    if (!sub.stripeSubscriptionId && sub.plan.tier.code === "FREE") {
+      // FREE: the period itself rolls forward for ever. (A partner promo period
+      // is also local but has a fixed end — it takes the windowed branch.)
       const periodEnd = addMonths(grantStart, 1);
       const rolled = await db.subscription.update({
         where: { id: sub.id },
@@ -360,14 +391,15 @@ export async function runExpirePeriods(opts: JobOpts = {}): Promise<{ expiredPas
   const now = opts.now ?? new Date();
   const ended = await db.subscription.findMany({
     where: { currentPeriodEnd: { lte: now }, status: { in: LIVE }, ...(opts.memberId ? { memberId: opts.memberId } : {}) },
-    include: { plan: true },
+    include: { plan: { include: { tier: true } } },
   });
   let expiredPasses = 0;
   let expiredKeys = 0;
   for (const sub of ended) {
     const { expired } = await expirePlanKeys(sub.memberId, sub.currentPeriodEnd, { db, now });
     if (expired > 0) expiredKeys++;
-    if (sub.plan.period === "TOURIST_WEEK") {
+    if (!sub.stripeSubscriptionId && sub.plan.tier.code !== "FREE") {
+      // Tourist passes and partner promo periods: fixed end, back to FREE.
       await db.subscription.update({ where: { id: sub.id }, data: { status: "EXPIRED", nextGrantAt: null } });
       await ensureFreeSubscription(sub.memberId, { db, now });
       expiredPasses++;

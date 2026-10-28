@@ -63,6 +63,11 @@ export default async function MemberPage({
     prisma.fraudFlag.findMany({ where: { memberId: member.id }, orderBy: { createdAt: "desc" }, take: 50, include: { reviewedBy: { select: { name: true, email: true } } } }),
   ]);
   const tickets = await prisma.redemption.findMany({ where: { memberId: member.id }, include: { event: { select: { id: true, title: true, startsAt: true } }, offer: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 50 });
+  const [referralsMade, referralReceived, partnerClaims] = await Promise.all([
+    prisma.referral.findMany({ where: { referrerId: member.id }, include: { invitee: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: "desc" } }),
+    prisma.referral.findUnique({ where: { inviteeId: member.id }, include: { referrer: { select: { id: true, name: true, email: true } } } }),
+    prisma.partnerClaim.findMany({ where: { memberId: member.id }, include: { community: { select: { id: true, name: true, code: true } } }, orderBy: { claimedAt: "desc" } }),
+  ]);
   const backPath = `/admin/members/${member.id}`;
   const sub = membership.subscription;
 
@@ -162,7 +167,12 @@ export default async function MemberPage({
           ) : (
             <p className="mt-2 text-ink-dark-muted">in good standing</p>
           )}
-          {member.partnerClaimToken && <p className="mt-3 text-xs text-ink-dark-muted">partner token stored (Phase 7 verifies)</p>}
+          {partnerClaims.map((c) => (
+            <p key={c.id} className="mt-3 text-xs text-ink-dark-muted">
+              <Link href={`/admin/partners/${c.community.id}`} className="hover:text-red">{c.community.name}</Link> member <span className="font-mono">{c.externalMemberId}</span> · claimed {formatDateOnly(c.claimedAt, tz)}
+            </p>
+          ))}
+          {member.partnerClaimToken && <p className="mt-3 text-xs text-warn">partner token stored but not claimed yet (invalid, expired or community missing)</p>}
         </div>
       </div>
 
@@ -287,6 +297,42 @@ export default async function MemberPage({
             </tbody>
           </Table>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <SectionTitle>Referrals · {referralsMade.length} made{referralReceived ? " · 1 received" : ""}</SectionTitle>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Direction</Th>
+              <Th>Member</Th>
+              <Th>Status</Th>
+              <Th>Signed up</Th>
+              <Th>Vested</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {referralsMade.length === 0 && !referralReceived && <EmptyRow colSpan={5}>No referrals.</EmptyRow>}
+            {referralReceived && (
+              <tr>
+                <Td className="text-ink-dark-muted">referred by</Td>
+                <Td><Link href={`/admin/members/${referralReceived.referrer.id}`} className="hover:text-red">{referralReceived.referrer.name ?? referralReceived.referrer.email}</Link></Td>
+                <Td><Badge tone={referralReceived.status === "VESTED" ? "ok" : referralReceived.status === "REJECTED" ? "red" : "warn"}>{referralReceived.status.toLowerCase()}</Badge>{referralReceived.rejectedReason && <span className="ml-2 text-xs text-ink-dark-muted">{referralReceived.rejectedReason.replace("_", " ")}</span>}</Td>
+                <Td className="text-ink-dark-muted">{formatDateOnly(referralReceived.createdAt, tz)}</Td>
+                <Td className="text-ink-dark-muted">{referralReceived.vestedAt ? formatDateOnly(referralReceived.vestedAt, tz) : "—"}</Td>
+              </tr>
+            )}
+            {referralsMade.map((r) => (
+              <tr key={r.id}>
+                <Td className="text-ink-dark-muted">invited</Td>
+                <Td><Link href={`/admin/members/${r.invitee.id}`} className="hover:text-red">{r.invitee.name ?? r.invitee.email}</Link></Td>
+                <Td><Badge tone={r.status === "VESTED" ? "ok" : r.status === "REJECTED" ? "red" : "warn"}>{r.status.toLowerCase()}</Badge>{r.rejectedReason && <span className="ml-2 text-xs text-ink-dark-muted">{r.rejectedReason.replace("_", " ")}</span>}</Td>
+                <Td className="text-ink-dark-muted">{formatDateOnly(r.createdAt, tz)}</Td>
+                <Td className="text-ink-dark-muted">{r.vestedAt ? formatDateOnly(r.vestedAt, tz) : "—"}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
       </div>
 
       <div className="mt-8">

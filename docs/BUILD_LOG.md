@@ -399,3 +399,65 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
   scope: reputation effects on access).
 - `DOOR` staff role exists but has no screen of its own; it can open `/admin` read-only and `/scan`
   with the event credentials.
+
+## Phase 7 — Referrals and partner claims (ELL bridge) (2026-10-28)
+
+**Shipped**
+
+- `src/domain/referrals`: `referralOverview` (code, link `/r/{code}`, active flag, counts, keys
+  earned, the list with invitees shown as "First L."), `vestReferral` / `vestReferrals` (the daily
+  job, `pnpm jobs:vest-referrals`). Vesting order: hard rejections first (self-referral, shared
+  device fingerprint, shared card fingerprint → REJECTED + an OPEN `SELF_REFERRAL` fraud flag with
+  the evidence), then the invitee's first paid non-tourist period must be older than
+  `referral_vesting_days`, the invitee must have a CHECKED_IN redemption, the referrer must still be
+  on a paid non-tourist plan, and the referrer must be under `referral_monthly_cap` vested this
+  calendar month — otherwise it stays PENDING with a reason. Vesting flips PENDING → VESTED with a
+  conditional update and grants `referral_bonus_keys` to both sides as PURCHASED keys with
+  references `referral:{id}:referrer|invitee`, so it can never pay twice. Both get an email.
+- Onboarding now records a referral only when the referrer's code is active (paid, non-tourist);
+  otherwise the member sees "that code isn't active right now".
+- Member app `/app/referrals` ("Invite" tab): code, link, native share sheet with clipboard fallback,
+  pending / vested / keys-earned tiles, the list with status, and where the member came from.
+- `src/domain/partners`: RS256 claim-token verification with `node:crypto` (no JWT library; only
+  RS256, required `source`/`externalMemberId`/`exp`, 60 s skew), `claimPartnerToken` (community by
+  `source`, signature, expiry, one claim per member per community, unique `(community,
+  externalMemberId)` and `jti` → "already used"; claim row + promo + token clean-up in one
+  transaction, so a failed promo leaves no claim), `claimStoredToken` for the token typed at
+  onboarding, community CRUD with PEM + promo validation. Promo kinds: `PLAN_PERIOD` (a paid tier
+  for N months without Stripe — new `startPromoPeriod` in billing, monthly key grants via
+  `nextGrantAt`, back to FREE at the end through `runExpirePeriods`), `KEYS` (purchased keys,
+  `PROMO_GRANT`), `STRIPE_COUPON` (applied to the live Stripe subscription).
+- Onboarding tries the claim immediately and reports the outcome on the welcome notice; the
+  Membership screen has a "partner membership" card to paste a token or retry the stored one.
+- Backoffice: `/admin/referrals` (counts, filters, "Run vesting now"), `/admin/partners` (+ detail:
+  edit for ADMIN, read-only for OPS, claims list), member page gained a Referrals table and partner
+  claims in the Account card. Nav gained Referrals and Partners.
+- `docs/PARTNER_TOKEN.md`: the JWT contract for EventOS (claims, uniqueness rules, issuing example,
+  promo kinds, key rotation).
+- Tests: `tests/referrals.test.ts` (6) + `tests/partners.test.ts` (6) → 101 total. Invariant 8:
+  every pending reason in order, pay-once, tourist never vests, the three rejections with flags, the
+  monthly cap rolling into next month. Invariant 9: a token, its `jti` and its external member id
+  each refuse a second claim; expired / wrong key / `HS256` / `none` / malformed / unknown or paused
+  community refused without side effects; the plan promo refuses a Stripe-paying member and leaves
+  no claim; the 3-month plan promo grants month 2 and 3 and expires back to FREE.
+
+**Decisions**
+
+- A referral is only recorded when the referrer's code is active at signup, and only vests while
+  the referrer is still paid. A lapsed referrer's pending referrals wait rather than being rejected.
+- Over-cap referrals wait for the next calendar month (UTC) instead of being lost.
+- Fingerprint rejections open a fraud flag under the existing `SELF_REFERRAL` rule (evidence says
+  which kind) rather than adding enum values.
+- Partner promo periods count as "paid" for everything except referral vesting (`firstPaidAt`
+  stays null) — so an ELL member's own referral code is active during the promo.
+- `runMonthlyGrants` now rolls the period only for the FREE tier; any other local subscription
+  (tourist, promo) has a fixed end and expires back to FREE.
+- Token verification is hand-rolled on `node:crypto` to avoid a JWT dependency; the payload is
+  three required fields.
+
+**Open**
+
+- A paying member who receives a `PLAN_PERIOD` promo is refused; partners wanting to reward
+  existing subscribers should use `STRIPE_COUPON` or `KEYS`.
+- EventOS's issuing side is not built yet (the contract is in `docs/PARTNER_TOKEN.md`).
+- The "Invite" tab makes the member nav scroll on narrow phones.

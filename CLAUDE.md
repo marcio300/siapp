@@ -278,6 +278,28 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   sync on `online`/45 s, "sync surprises"), API `POST /api/scan`, `GET /api/scan/state?manifest=0`,
   `POST /api/scan/sync`, `GET /api/scan/search?q=`, `POST /api/scan/dispute` (401 without cookie). Admin event
   page: "Open scanner" link + Door log (last 100 scans). Tests `tests/scanner.test.ts` (10 → suite 89).
+- **Done — Phase 7 (referrals + partner claims)**: `src/domain/referrals/` — `status.ts` (`isReferralCodeActive` =
+  paid && !tourist via getMembership, `referralLink`, `referralOverview(memberId)`, `inviteeLabel` "First L.",
+  `monthStartUtc`), `vesting.ts` (`vestReferral(id, {now})` → `{outcome: vested|rejected|pending, reason}`: hard
+  rejections self_referral / shared_device / shared_card → REJECTED + OPEN `SELF_REFERRAL` flag w/ evidence; then
+  invitee_not_paid (earliest non-tourist `Subscription.firstPaidAt`) → refund_window (`referral_vesting_days`) →
+  invitee_no_show_yet (CHECKED_IN count) → referrer_not_paid → monthly_cap (VESTED w/ vestedAt ≥ month start) →
+  tx `updateMany(PENDING→VESTED)` + `grantPurchasedKeys` REFERRAL_BONUS refs `referral:{id}:referrer|invitee` +
+  emails; `vestReferrals({referrerId?})` job), `notify.ts`. Onboarding records a referral only when the code is
+  active (`inactive_code` result). `src/domain/partners/` — `jwt.ts` (`peekClaimToken`, `verifyClaimToken(token,
+  pem)` RS256 only via node:crypto, required source/externalMemberId/exp, 60 s skew; `PartnerError{reason}`),
+  `promo.ts` (`PromoSchema` PLAN_PERIOD{tier,months} | KEYS{keys} | STRIPE_COUPON{couponId}, `applyPromo`),
+  `claims.ts` (`claimPartnerToken(memberId, token)`: community by `source` → verify → one claim per member per
+  community → tx {PartnerClaim (unique community+externalMemberId, tokenJti) → promo → clear
+  `Member.partnerClaimToken`}; P2002 → `already_used`; `claimStoredToken`), `communities.ts` (CRUD w/ PEM + promo
+  validation). Billing: `startPromoPeriod({memberId, tierCode, months})` (no Stripe id, firstPaidAt null,
+  nextGrantAt monthly, refuses a live Stripe sub); `runMonthlyGrants` rolls only FREE; `runExpirePeriods` expires
+  any local non-FREE sub → FREE. Job `pnpm jobs:vest-referrals` (daily). Member app: `/app/referrals` ("Invite"
+  tab; `share-button.tsx` Web Share → clipboard), membership "partner membership" card → `claimPartnerAction`,
+  onboarding action claims the stored token (`?partner=`/`?partnerError=` on the welcome notice). Backoffice:
+  `/admin/referrals` (+ `runVestingAction`), `/admin/partners` (+ `[id]`, ADMIN edits, `partner-form.tsx`),
+  member page Referrals table + claims. `docs/PARTNER_TOKEN.md` = the EventOS contract. Tests
+  `tests/referrals.test.ts` (6) + `tests/partners.test.ts` (6) → suite 101.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

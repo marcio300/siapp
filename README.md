@@ -125,5 +125,11 @@ tests/             Vitest suite + global DB setup
 - **Phase 6 — done**: `/scan` door app (event code + PIN with lockout, camera + manual code + name
   search, big-selfie result card, PAY_DOOR admit, disputes, offline cache + queued scans synced on
   reconnect), `src/domain/scanner`, door log on the event page.
-- Next: **Phase 7 — referrals and partner claims**, see `docs/BUILD_PLAN.md`.
+- **Phase 7 — done**: referrals (`src/domain/referrals`: active codes for paid members, daily vesting
+  job `pnpm jobs:vest-referrals` with the refund-window + scanned-ticket rules, rejections flagged,
+  monthly cap, 10 never-expiring keys each) with the member "Invite" screen and an admin list; partner
+  communities (`src/domain/partners`: RS256 claim tokens verified with the partner's public key, one
+  claim per member ever, promos: plan period / keys / Stripe coupon) with backoffice CRUD. Contract for
+  the issuing side: `docs/PARTNER_TOKEN.md`.
+- Next: **Phase 8 — settlements**, see `docs/BUILD_PLAN.md`.
 - The human-readable record of every phase (decisions, deviations, gotchas) is `docs/BUILD_LOG.md`.

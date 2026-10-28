@@ -14,6 +14,21 @@ import {
 
 const PriceSchema = z.object({ planPriceId: z.string().min(1) });
 
+/** Partner (ELL) claim token typed on the membership screen, or the one stored at onboarding. */
+export async function claimPartnerAction(formData: FormData): Promise<void> {
+  const member = await requireMember();
+  const { PartnerError, claimPartnerToken, claimStoredToken } = await import("@/domain/partners");
+  const typed = String(formData.get("token") ?? "").trim();
+  try {
+    const res = typed ? await claimPartnerToken(member.id, typed) : await claimStoredToken(member.id);
+    if (!res) redirect("/app/membership?error=Paste%20your%20partner%20token%20first");
+    redirect(`/app/membership?claimed=${encodeURIComponent(`${res.community.name}: ${res.applied}`)}`);
+  } catch (e) {
+    if (e instanceof PartnerError) redirect(`/app/membership?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+}
+
 /** Billing rule violations are shown to the member; anything else (Stripe down, no key) is logged and shown generically. */
 function fail(e: unknown, back = "/app/membership"): never {
   if (e instanceof BillingError) redirect(`${back}?error=${encodeURIComponent(e.message)}`);

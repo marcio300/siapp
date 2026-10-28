@@ -6,6 +6,7 @@ const LINKS = [
   { href: "/app/tickets", label: "Tickets" },
   { href: "/app/wallet", label: "Wallet" },
   { href: "/app/membership", label: "Membership" },
+  { href: "/app/referrals", label: "Invite" },
   { href: "/app/profile", label: "Profile" },
 ];
 
@@ -21,12 +22,12 @@ export function MemberHeader({ current, signOut }: { current: string; signOut: (
           <button className="text-sm text-ink-muted hover:text-ink">Sign out</button>
         </form>
       </div>
-      <nav className="flex gap-1 rounded-full border border-line bg-bg-elevated p-1 text-sm">
+      <nav className="flex gap-1 overflow-x-auto rounded-full border border-line bg-bg-elevated p-1 text-sm [scrollbar-width:none]">
         {LINKS.map((l) => (
           <Link
             key={l.href}
             href={l.href}
-            className={`flex-1 rounded-full px-3 py-1.5 text-center transition ${
+            className={`shrink-0 flex-1 rounded-full px-3 py-1.5 text-center transition ${
               current === l.href ? "bg-red font-semibold text-white" : "text-ink-muted hover:text-ink"
             }`}
           >

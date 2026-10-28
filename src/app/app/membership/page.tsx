@@ -5,7 +5,7 @@ import { getMembership, isRecurring, keysForPlan } from "@/domain/billing";
 import { formatDateOnly, formatMoney } from "@/lib/format";
 import { KeyIcon } from "@/components/key-icon";
 import { MemberHeader, Notice } from "@/components/member-nav";
-import { cancelRenewalAction, choosePlanAction, portalAction, resumeRenewalAction, touristPassAction } from "./actions";
+import { cancelRenewalAction, choosePlanAction, claimPartnerAction, portalAction, resumeRenewalAction, touristPassAction } from "./actions";
 
 const PERIOD_LABEL = { MONTHLY: "month", QUARTERLY: "quarter", YEARLY: "year", TOURIST_WEEK: "week" } as const;
 
@@ -30,6 +30,10 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
     where: { stripePriceId: { not: null }, plan: { isActive: true, period: "TOURIST_WEEK" }, ...(member.cityId ? { cityId: member.cityId } : {}) },
     include: { plan: { include: { tier: true } } },
   });
+  const [storedToken, claims] = await Promise.all([
+    prisma.member.findUnique({ where: { id: member.id }, select: { partnerClaimToken: true } }),
+    prisma.partnerClaim.findMany({ where: { memberId: member.id }, include: { community: { select: { name: true } } }, orderBy: { claimedAt: "desc" } }),
+  ]);
   const byTier = new Map<string, typeof prices>();
   for (const p of prices) byTier.set(p.plan.tier.code, [...(byTier.get(p.plan.tier.code) ?? []), p]);
 
@@ -46,6 +50,7 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
       {sp.changed && <Notice tone="ok">Plan changed. Keys for the new tier arrive with your next period.</Notice>}
       {sp.cancelled && <Notice tone="ok">Renewal cancelled. You keep everything until the period ends.</Notice>}
       {sp.resumed && <Notice tone="ok">Welcome back. Your plan renews as usual.</Notice>}
+      {sp.claimed && <Notice tone="ok">Claimed — {sp.claimed}.</Notice>}
 
       <section className="night-card p-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Your membership</p>
@@ -169,6 +174,23 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           Your {PERIOD_LABEL[sub.plan.period]}ly plan still grants keys monthly — unused keys expire at each month&apos;s end.
         </p>
       )}
+      <section className="night-card p-5">
+        <h2 className="font-display text-xl leading-tight">
+          partner membership<span className="text-red">.</span>
+        </h2>
+        <p className="mt-1 font-serif italic text-ink-muted">
+          {claims.length > 0
+            ? `claimed: ${claims.map((c) => `${c.community.name} (${formatDateOnly(c.claimedAt, tz)})`).join(", ")}.`
+            : "in erasmus life lisboa or another partner community? paste the token they gave you and we apply the promo."}
+        </p>
+        {storedToken?.partnerClaimToken && (
+          <p className="mt-2 text-xs text-warn">we still have the token you entered at signup — hit claim to try it again.</p>
+        )}
+        <form action={claimPartnerAction} className="mt-3 flex flex-col gap-2">
+          <input name="token" maxLength={4096} className="input-dark font-mono text-xs" placeholder={storedToken?.partnerClaimToken ? "(using the stored token)" : "paste your token"} />
+          <button className="btn border border-line text-ink-muted hover:text-ink">Claim</button>
+        </form>
+      </section>
     </main>
   );
 }
