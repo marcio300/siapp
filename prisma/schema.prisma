@@ -431,6 +431,8 @@ model Event {
   publishedAt    DateTime?
   scannerCode    String      @unique
   scannerPinHash String
+  scannerFailedLogins Int    @default(0) // wrong-PIN streak; reset on success (scanner login rate limit)
+  scannerLockedUntil  DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -439,6 +441,7 @@ model Event {
   offers      Offer[]
   redemptions Redemption[]
   settlements Settlement[]
+  scans       Scan[]
 
   @@index([cityId, status, startsAt])
   @@index([producerId])
@@ -538,6 +541,7 @@ model Scan {
   scannedAt  DateTime   @default(now())
 
   ticket Ticket? @relation(fields: [ticketId], references: [id])
+  event  Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
   @@index([eventId, scannedAt])

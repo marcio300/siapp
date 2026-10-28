@@ -259,6 +259,25 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   Backoffice: redemptions table on event page, tickets on member page. Jobs `pnpm jobs:mark-no-shows`
   (hourly) / `jobs:expire-pending-payments` (5 min) / `jobs:expire-waitlist-claims` (5 min). Tests
   `tests/redemption.test.ts` (11 → suite 79).
+- **Done — Phase 6 (scanner)**: `src/domain/scanner/` — `session.ts` (`createScannerToken`/`verifyScannerToken`:
+  HMAC(AUTH_SECRET) token `{eventId, device, exp}`, cookie `siapp_scan` via `src/lib/scanner-auth.ts`
+  `getScannerSession`/`requireScannerSession`/`scannerApiError`), `login.ts` (`loginScanner({code, pin, device})`
+  → `{event, token, expiresAt}` = endsAt + 12 h; 5 wrong PINs lock the code 15 min — `Event.scannerFailedLogins/
+  scannerLockedUntil`, migration `20261029090000_scanner_lockout` which also adds the `Scan.event` FK), `scan.ts`
+  (`processScan({eventId, code, scannedBy, admitAfterWindow?, at?})` → `ScanOutcome{result, message, scanId,
+  ticket?: TicketCard, firstScanAt?, checkedInAt?, afterWindow?}`; ticket by `qrPayload` + `verifyQrSignature`;
+  CHECKED_IN → ALREADY_SCANNED, CANCELLED/EXPIRED/DENIED/NO_SHOW → CANCELLED, PENDING_PAYMENT/HELD/wrong event/
+  unknown/tampered → INVALID, TIME_WINDOW past `validUntil` → WINDOW_CLOSED unless PAY_DOOR + `admitAfterWindow`;
+  OK = tx `updateMany(ACTIVE→CHECKED_IN)` (count 0 → ALREADY_SCANNED, concurrency-safe) + `AttendanceStats.shows++`;
+  one `Scan` row per attempt, `at` honoured when plausible), `counters.ts` (`scannerSummary`), `lookup.ts`
+  (`searchTickets(eventId, q)` name/+1/email; `flagDispute({eventId, scanId, note})` → disputes++ once per scan),
+  `offline.ts` (`ticketManifest`, `syncScans(eventId, QueuedScan[])` ordered replay + attached disputeNote).
+  App: `/scan` (login form → `src/app/scan/actions.ts`; signed in → `scanner-client.tsx`: BarcodeDetector +
+  `jsqr` fallback, manual code, name search, result flood with big selfie, PAY_DOOR admit button, dispute,
+  localStorage cache `siapp_scan:{eventId}` {manifest, queue, localScanned}, offline provisional results,
+  sync on `online`/45 s, "sync surprises"), API `POST /api/scan`, `GET /api/scan/state?manifest=0`,
+  `POST /api/scan/sync`, `GET /api/scan/search?q=`, `POST /api/scan/dispute` (401 without cookie). Admin event
+  page: "Open scanner" link + Door log (last 100 scans). Tests `tests/scanner.test.ts` (10 → suite 89).
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

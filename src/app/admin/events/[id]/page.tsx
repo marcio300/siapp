@@ -28,6 +28,8 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   ]);
   const closed = event.status === "FINISHED" || event.status === "CANCELLED";
   const redemptions = await prisma.redemption.findMany({ where: { eventId: event.id }, include: { member: { select: { id: true, name: true, email: true } }, offer: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 300 });
+  const scans = await prisma.scan.findMany({ where: { eventId: event.id }, include: { ticket: { select: { memberName: true, plusOneName: true, redemption: { select: { memberId: true } } } } }, orderBy: { scannedAt: "desc" }, take: 100 });
+  const scanTotals = { ok: scans.filter((s) => s.result === "OK").length, disputed: scans.filter((s) => s.disputed).length };
 
   return (
     <>
@@ -83,10 +85,14 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Scanner login</p>
           <p className="mt-2">Code <span className="font-mono text-base font-semibold">{event.scannerCode}</span></p>
           <p className="text-xs text-ink-dark-muted">PIN: shown once at creation. Hand both to the door.</p>
-          <form action={regeneratePinAction} className="mt-3">
-            <input type="hidden" name="id" value={event.id} />
-            <button className="btn btn-outline !py-1 text-xs">Regenerate PIN</button>
-          </form>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={regeneratePinAction}>
+              <input type="hidden" name="id" value={event.id} />
+              <button className="btn btn-outline !py-1 text-xs">Regenerate PIN</button>
+            </form>
+            <Link href="/scan" target="_blank" className="btn btn-outline !py-1 text-xs">Open scanner ↗</Link>
+          </div>
+          <p className="mt-2 text-xs text-ink-dark-muted">{counters.size > 0 ? `${Array.from(counters.values()).reduce((n, c) => n + c.checkedIn, 0)} checked in` : "No offers yet"}{scanTotals.disputed > 0 ? ` · ${scanTotals.disputed} disputed` : ""}</p>
           {event.imageUrls[0] && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={event.imageUrls[0]} alt="" className="mt-4 h-28 w-full rounded-lg object-cover" />
@@ -165,6 +171,38 @@ export default async function EventPage({ params, searchParams }: { params: Prom
                 <Td><Badge tone={statusTone(r.status)}>{r.status.toLowerCase().replace("_", " ")}</Badge></Td>
                 <Td className="text-ink-dark-muted">{r.plusOneName ?? "—"}</Td>
                 <Td className="whitespace-nowrap text-ink-dark-muted">{formatDate(r.createdAt, tz)}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </div>
+      <div className="mt-8">
+        <SectionTitle>Door log · {scans.length}{scans.length === 100 ? "+" : ""} scans · {scanTotals.ok} admitted</SectionTitle>
+        <Table>
+          <thead>
+            <tr>
+              <Th>When</Th>
+              <Th>Result</Th>
+              <Th>Ticket</Th>
+              <Th>Door</Th>
+              <Th>Dispute</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {scans.length === 0 && <EmptyRow colSpan={5}>Nothing scanned yet.</EmptyRow>}
+            {scans.map((s) => (
+              <tr key={s.id} className={s.disputed ? "bg-warn/10" : undefined}>
+                <Td className="whitespace-nowrap text-ink-dark-muted">{formatDate(s.scannedAt, tz)}</Td>
+                <Td><Badge tone={s.result === "OK" ? "ok" : s.result === "ALREADY_SCANNED" || s.result === "WINDOW_CLOSED" ? "warn" : "red"}>{s.result.toLowerCase().replace("_", " ")}</Badge></Td>
+                <Td>
+                  {s.ticket ? (
+                    <Link href={`/admin/members/${s.ticket.redemption.memberId}`} className="hover:text-red">{s.ticket.memberName}{s.ticket.plusOneName ? ` +1 ${s.ticket.plusOneName}` : ""}</Link>
+                  ) : (
+                    <span className="font-mono text-xs text-ink-dark-muted">{s.rawPayload ? `${s.rawPayload.slice(0, 16)}…` : "—"}</span>
+                  )}
+                </Td>
+                <Td className="text-ink-dark-muted">{s.scannedBy ?? "—"}</Td>
+                <Td className="text-ink-dark-muted">{s.disputed ? s.disputeNote : "—"}</Td>
               </tr>
             ))}
           </tbody>

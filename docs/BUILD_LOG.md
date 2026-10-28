@@ -341,3 +341,61 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
   flags demo accounts into review; raise `device_max_accounts` in the dev settings when demoing.
 - Redirect responses in tests: a `waitForURL` that already matches resolves at once — navigate to a
   clean URL before submitting.
+
+## Phase 6 — Scanner (2026-10-28)
+
+**Shipped**
+
+- `/scan` door app, ported from EventOS's `scanner-client` and extended per spec §14. Login with the
+  event's scanner code + PIN and an optional door label ("Main door"); the session is a signed,
+  httpOnly cookie valid until 12 h after the event ends. Wrong PINs are rate-limited per code: 5 in a
+  row lock the code for 15 minutes (`Event.scannerFailedLogins/scannerLockedUntil`).
+- `src/domain/scanner`: `processScan` resolves the QR token, re-checks the stored HMAC signature, then
+  returns OK / ALREADY_SCANNED / WINDOW_CLOSED (PAY_DOOR or REFUSE) / CANCELLED / INVALID with the
+  ticket card (selfie, name, +1, offer). Every attempt writes a `Scan` row (unknown codes keep the raw
+  payload). OK flips ACTIVE → CHECKED_IN with a conditional `updateMany` inside a transaction, so two
+  doors scanning the same QR at once get exactly one OK, and bumps `AttendanceStats.shows`.
+  `scannerSummary` (per-offer redeemed / scanned / remaining or window status + minutes left),
+  `searchTickets` (name, +1 or email), `flagDispute` (note on the scan, `AttendanceStats.disputes`
+  once per scan), `ticketManifest` + `syncScans` for offline mode.
+- Scanner UI (light theme, result floods the card green / amber / red): counters header, camera via
+  the native BarcodeDetector with a `jsqr` fallback for browsers without it (Safari), manual code
+  entry, name search with a "Scan" button per hit, "Paid at the door — admit" after WINDOW_CLOSED on
+  PAY_DOOR offers, "Flag dispute" with a note, sign out.
+- Offline: the ticket list (every ticket with its status, photo URL and offer window) is cached in
+  localStorage at login and refreshed every 45 s. With no connection, reads resolve against the cache
+  (provisional OK / already scanned / cancelled / window closed), get queued with the device
+  timestamp, and replay through `POST /api/scan/sync` when the browser comes back online. The server
+  keeps the device timestamp for `checkedInAt` when it is plausible (≥ 24 h before the event start,
+  not in the future). Replays whose result differs from what the door saw (e.g. ALREADY_SCANNED
+  because another door got there first) show up in a "sync surprises" panel. Disputes flagged offline
+  ride along with the queued scan.
+- Backoffice event page: "Open scanner" link, checked-in / disputed counts on the scanner card, and a
+  "Door log" table (last 100 scans: time, result, ticket, door, dispute note).
+- Tests: 10 new (89 total): login + lockout + token verification, OK with stats and device, double
+  scan, four concurrent scans → one OK, every INVALID path (unknown, tampered signature, wrong event,
+  unpaid, under review), every CANCELLED reason, WINDOW_CLOSED for REFUSE and PAY_DOOR + admit,
+  counters, lookup, dispute idempotency, manifest + ordered sync with timestamps and an attached note.
+
+**Decisions**
+
+- The scanner session is stateless (HMAC token, no DB row) and per event, matching "producers get a
+  scanner login per event" — there is no door identity beyond the label typed at login, which is
+  stored as `Scan.scannedBy`. Staff use the same code + PIN (the code sits on the event page).
+- Spec §14 lists five results; "wrong event", "not paid yet" and "under review" are INVALID with an
+  explicit message rather than new enum values.
+- PAY_DOOR after the window: the first scan only reports WINDOW_CLOSED; admission (and the check-in)
+  is an explicit second tap by the door, so a guest who walks away isn't marked as a show.
+- EventOS has no offline mode to port, so this one is deliberately simple: cache + queue + replay, with
+  the server as the only source of truth. No client-side signature verification (that would ship the
+  secret); an unknown code offline is "unverified" and left to the sync.
+- Offline photos depend on the browser's HTTP cache — the manifest carries URLs, not image bytes.
+
+**Open**
+
+- No PWA shell yet (Phase 10): the scanner works offline inside an open tab, but a cold load without
+  network still needs the app shell cached by a service worker.
+- Dispute flags only feed `AttendanceStats.disputes`; nothing acts on the count (by design — out of
+  scope: reputation effects on access).
+- `DOOR` staff role exists but has no screen of its own; it can open `/admin` read-only and `/scan`
+  with the event credentials.

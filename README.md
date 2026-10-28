@@ -122,5 +122,8 @@ tests/             Vitest suite + global DB setup
   discounted tickets via Stripe Checkout + webhook, cancellation window with key + cash refunds,
   waitlist with timed claims, no-show job; member home / event / redeem sheet / tickets with QR.
   Jobs: `pnpm jobs:mark-no-shows`, `pnpm jobs:expire-pending-payments`, `pnpm jobs:expire-waitlist-claims`.
-- Next: **Phase 6 — scanner**, see `docs/BUILD_PLAN.md`.
+- **Phase 6 — done**: `/scan` door app (event code + PIN with lockout, camera + manual code + name
+  search, big-selfie result card, PAY_DOOR admit, disputes, offline cache + queued scans synced on
+  reconnect), `src/domain/scanner`, door log on the event page.
+- Next: **Phase 7 — referrals and partner claims**, see `docs/BUILD_PLAN.md`.
 - The human-readable record of every phase (decisions, deviations, gotchas) is `docs/BUILD_LOG.md`.
