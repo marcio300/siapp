@@ -202,6 +202,28 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   member page identity/ID-photo/attendance/account cards + flags + devices tables, `/api/admin/id-photo/
   [memberId]` (OPS+, decrypts, no-store). Jobs `pnpm jobs:purge-id-photos`. Tests `tests/identity.test.ts`
   (7) + `tests/fraud.test.ts` (7) → suite 57.
+- **Done — Phase 4 (producers, events, offers — backoffice)**: `src/lib/time.ts` (`tzOffsetMs`, `localToUtc`
+  samples offsets at ±12 h and picks the earliest valid candidate — overlap → first occurrence, gap →
+  after the jump; `utcToLocal`; `windowUntilFromLocalTime(eventStartsAt, "02:00", tz)` = next 02:00 after
+  start). `src/lib/media/crypto.ts` gained `encryptText/decryptText`; key env is now `DATA_ENCRYPTION_KEY`
+  (`ID_PHOTO_KEY` accepted). `src/domain/producers/` (`ProducerSchema`, `createProducer`/`updateProducer`
+  (empty payout keeps stored; city change refused with events), `clearPayoutDetails`, `payoutDetails(enc,
+  reveal)` masked/full). `src/domain/events/` — `schemas.ts` (`EventSchema` w/ local `{date,time}` pairs,
+  `OfferSchema` superRefine per type/allocation/private sale, `optionalInt` preprocess, consts
+  `TIER_CODES/OFFER_TYPES/ALLOCATION_TYPES/AFTER_WINDOW/PRIVATE_SALE_HOURS`), `events.ts` (`createEvent` →
+  `{event, pin}` (cityId from producer, `scannerCode` 6 chars, `scannerPinHash` scrypt; `verifyPin`,
+  `authenticateScanner(code, pin)` for Phase 6, `regenerateScannerPin`), `updateEvent` (frozen when
+  FINISHED/CANCELLED), `setEventStatus` (TRANSITIONS map; PUBLISHED needs ≥1 offer; `publishedAt` stamped
+  once; fills `privateSaleOpensAt = publishedAt + hoursBefore` where unset), `duplicateEvent({shiftDays})`
+  (offers cloned, opens-at reset, new creds), `offerCounters(ids)` → redeemed (PENDING_PAYMENT/HELD/ACTIVE/
+  CHECKED_IN) + checkedIn, `eventFormDefaults`), `offers.ts` (`addOffer`/`updateOffer`/`deleteOffer`;
+  `validUntil` absolute UTC via windowUntil; explicit opens-at wins, else computed when already published;
+  after live redemptions type/keyCost/price frozen + capacity ≥ redeemed; delete needs 0 redemptions;
+  `offerFormDefaults`). UI: `/admin/producers` (+`[id]`, reveal/clear ADMIN), `/admin/events` (filters
+  city/status/from/to/past, counters), `/admin/events/new`, `/admin/events/[id]` (status buttons, duplicate
+  w/ shift, scanner card + one-time `?pin=` banner, offers as `<details>` w/ edit form + add form);
+  `src/lib/forms.ts` FormData helpers; actions in `src/app/admin/events/actions.ts` (query-before-hash
+  `fail`). Tests `tests/time.test.ts` (6) + `tests/events.test.ts` (5) → suite 68.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
  * page that doesn't exist yet is worse than no link, so only built pages are
  * listed. Add to NAV when the page exists.
  */
-type IconName = "dashboard" | "members" | "fraud" | "plans" | "settings";
+type IconName = "dashboard" | "members" | "fraud" | "producers" | "events" | "plans" | "settings";
 
 function Icon({ name, className }: { name: IconName; className?: string }) {
   const common = {
@@ -37,6 +37,20 @@ function Icon({ name, className }: { name: IconName; className?: string }) {
           <circle cx="9" cy="8" r="3.5" />
           <path d="M3.5 20c.9-3 3-4.5 5.5-4.5s4.6 1.5 5.5 4.5" />
           <path d="M16 5.5a3.5 3.5 0 0 1 0 5.6M18.5 20c-.4-1.9-1.3-3.3-2.6-4.1" />
+        </svg>
+      );
+    case "producers":
+      return (
+        <svg {...common}>
+          <path d="M3 21V8l9-5 9 5v13" />
+          <path d="M9 21v-6h6v6M3 12h18" />
+        </svg>
+      );
+    case "events":
+      return (
+        <svg {...common}>
+          <rect x="3" y="5" width="18" height="16" rx="2" />
+          <path d="M3 10h18M8 3v4M16 3v4" />
         </svg>
       );
     case "fraud":
@@ -67,6 +81,8 @@ type NavItem = { href: string; label: string; icon: IconName };
 
 const NAV: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: "dashboard" },
+  { href: "/admin/events", label: "Events", icon: "events" },
+  { href: "/admin/producers", label: "Producers", icon: "producers" },
   { href: "/admin/members", label: "Members", icon: "members" },
   { href: "/admin/fraud", label: "Fraud queue", icon: "fraud" },
   { href: "/admin/plans", label: "Plans & key packs", icon: "plans" },

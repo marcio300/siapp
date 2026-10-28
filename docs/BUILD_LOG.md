@@ -219,3 +219,58 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
 - A server component cannot set cookies in Next 15 — the referral landing is a route handler.
 - Headless browsers share one fingerprint, so repeated local test runs trip the shared-device rule on
   purpose-built test accounts; that's the rule working, not a bug.
+
+## Phase 4 — Producers, events, offers (backoffice) (2026-10-28)
+
+**Shipped**
+
+- Producers (`/admin/producers`): list with search, create, edit; contact, default discount %,
+  "uses EventOS" flag, notes; payout details (IBAN) encrypted at rest, shown masked, revealed or
+  cleared by ADMIN only. A producer with events can't change city.
+- Events (`/admin/events`): list with city / status / date-range filters (upcoming by default, "include
+  past"), per-offer counters (redeemed / capacity, or redeemed · until HH:MM for windows); create
+  (draft) with the producer setting the city and local wall-clock start/end converted to UTC; edit;
+  publish / unpublish / cancel / finish; duplicate (structural copy as draft, dates shifted by N days,
+  new scanner credentials); scanner code + PIN generated on create and shown once (PIN stored as a
+  scrypt hash), regenerate PIN.
+- Offers nested on the event page, every spec §6 field: type, key cost, face value + discount %,
+  CAPPED capacity or TIME_WINDOW "until 02:00" (stored as the absolute UTC instant of the next 02:00
+  after the event starts, in the city timezone) with REFUSE / PAY_DOOR, private sale (tier
+  multi-select + 24/48 h → `privateSaleOpensAt = publishedAt + hours`, computed on publish or at once
+  for offers added after publishing, editable with an explicit date/time), open to FREE, +1 (allowed,
+  extra keys, extra cash), cancellation window override, max per member, redeem window, sort order.
+- Zod schemas in `src/domain/events/schemas.ts` are shared by the server actions and the forms.
+- Timezone helpers (`src/lib/time.ts`, no dependency): local → UTC across DST (spring gap resolves
+  after the jump, autumn overlap to the first occurrence), UTC → local, window-until.
+- Tests: 11 new (68 total): DST both ways, round trips, guest-list windows in summer/winter/on the
+  switch night, producer CRUD + encryption + masking, event creation/UTC/scanner/PIN, offer validation
+  per type/allocation, private-sale computation on publish (once, explicit value preserved, offers
+  added later), status transitions, counters, frozen economics, delete guard, duplicate.
+
+**Decisions**
+
+- Status flow: DRAFT → PUBLISHED ⇄ DRAFT (unpublish), PUBLISHED → CANCELLED | FINISHED; closed events
+  are frozen. Publishing requires at least one offer. `publishedAt` is stamped once and survives
+  unpublish/republish, so private-sale windows don't move.
+- Once an offer has live redemptions its type, key cost and price are frozen (add a new offer
+  instead) and capacity can't drop below what's redeemed. Deleting needs zero redemptions.
+- Cancelling an event is status-only here; refunds hook in with Phase 5 and settlement with Phase 8.
+- Images are URLs (one per line) for now; uploads via the media adapter can come with the member app.
+- `DATA_ENCRYPTION_KEY` replaces `ID_PHOTO_KEY` as the at-rest key name (old name still accepted).
+- The scanner login (`authenticateScanner(code, pin)`) is already in the domain for Phase 6.
+
+**Spec deviations**
+
+- None.
+
+**Open**
+
+- No image upload yet. No event-level "duplicate with offers unchanged but no shift" button (shift 0
+  does that). Scanner UI is Phase 6.
+
+**Gotchas**
+
+- Redirect URLs must put the query before the hash (`?error=…#offers`); the other way round the
+  server never sees the parameter.
+- Browser tests that wait for a URL already matching the current one resolve immediately; navigate
+  to a clean URL before each submission.
