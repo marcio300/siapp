@@ -40,7 +40,7 @@ async function signIn(page: Page, to: string) {
   await page.goto("/sign-in");
   await page.getByPlaceholder("you@example.com").fill(to);
   await page.getByRole("button", { name: "Email me a link" }).click();
-  await expect(page.getByText("check your inbox.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "check your inbox." })).toBeVisible();
   const mail = await waitForEmail(to, /your key to SIAPP/, since);
   const link = mail.text.match(/https?:\/\/[^\s]+\/api\/auth\/callback\/email[^\s]+/)?.[0];
   if (!link) throw new Error("magic link not found in email");
@@ -61,7 +61,7 @@ test.describe.serial("signup → subscribe → redeem → scan → cancel", () =
     await page.locator('input[name="ageAttested"]').check();
     await page.getByRole("button", { name: /let me in|continue|done|almost|in/i }).first().click();
     await expect(page).toHaveURL(/\/app\/profile\?welcome=1/);
-    await expect(page.getByText(/you're in/)).toBeVisible();
+    await expect(page.getByText(/you're in/).first()).toBeVisible();
     const welcome = await waitForEmail(email, /you're in\. sort of\./, t0);
     expect(welcome.text).toContain("welcome.");
 
