@@ -44,7 +44,7 @@ describe("referrals", () => {
     const paid = await memberOn("SOCIAL", 1);
     const free = await memberOn("FREE");
     const tourist = await memberOn("REGULAR", 0, "TOURIST_WEEK");
-    const base = { name: "Nova Member", dateOfBirth: "1990-05-05", ageAttested: true as const, cityId };
+    const base = { name: "Nova Member", dateOfBirth: "1990-05-05", cityId };
     const a = await createMember();
     expect((await completeOnboarding(a.id, { ...base, referralCode: paid.referralCode })).referral).toBe("recorded");
     expect(await prisma.referral.findUnique({ where: { inviteeId: a.id } })).toMatchObject({ referrerId: paid.id, status: "PENDING", code: paid.referralCode });

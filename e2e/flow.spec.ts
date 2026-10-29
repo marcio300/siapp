@@ -58,7 +58,6 @@ test.describe.serial("signup → subscribe → redeem → scan → cancel", () =
     await page.locator('select[name="dobDay"]').selectOption("15");
     await page.locator('select[name="dobMonth"]').selectOption("6");
     await page.locator('select[name="dobYear"]').selectOption("1990");
-    await page.locator('input[name="ageAttested"]').check();
     await page.getByRole("button", { name: /let me in|continue|done|almost|in/i }).first().click();
     await expect(page).toHaveURL(/\/app\/profile\?welcome=1/);
     await expect(page.getByText(/you're in/)).toBeVisible();

@@ -13,7 +13,6 @@ export async function completeOnboardingAction(formData: FormData): Promise<void
     result = await completeOnboarding(member.id, {
       name: String(formData.get("name") ?? ""),
       dateOfBirth: dob,
-      ageAttested: formData.get("ageAttested") === "on" ? true : (false as never),
       cityId: String(formData.get("cityId") ?? ""),
       referralCode: String(formData.get("referralCode") ?? ""),
       partnerClaimToken: String(formData.get("partnerClaimToken") ?? ""),

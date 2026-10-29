@@ -61,13 +61,6 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
           </div>
         </fieldset>
 
-        <label className="flex items-start gap-3 text-sm">
-          <input type="checkbox" name="ageAttested" required className="mt-1 h-4 w-4 accent-red" />
-          <span>
-            I confirm I am {MIN_AGE} or older. <span className="text-ink-muted">Door staff may ask for ID.</span>
-          </span>
-        </label>
-
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Your city</span>
           <select name="cityId" required className="input-dark" defaultValue={member.cityId ?? (cities.length === 1 ? cities[0]!.id : "")}>
