@@ -50,6 +50,7 @@ See `.env.example` — every variable is documented there. The important ones:
 ```bash
 pnpm test          # vitest run
 pnpm test:watch
+pnpm e2e           # Playwright critical path (own embedded Postgres on 5435 + next dev on 3100; not while pnpm dev runs)
 ```
 
 Tests run against a **real Postgres** — the ledger and allocation invariants in `docs/DATA_MODEL.md`
@@ -139,6 +140,10 @@ tests/             Vitest suite + global DB setup
   reminder with the cutoff, no-show, failed payment, tourist pass expiring) sent at most once via
   `NotificationLog`; `GET /api/cron/[job]` behind `CRON_SECRET` over the job registry in
   `src/lib/cron-jobs.ts`, all 12 jobs scheduled in `vercel.json`.
-- Next: **Phase 10 — polish, brand, PWA, legal, launch checklist**, see `docs/BUILD_PLAN.md`.
-- Decisions waiting on the owner: `docs/DECISIONS_PENDING.md`.
+- **Phase 10 — done**: installable PWA with offline ticket view, next-intl scaffold (`en`), legal
+  pages (terms / privacy / cookies, drafts for counsel), auto-renewal disclosure before checkout,
+  seller-of-record note on discounted tickets, account deletion, scanner accessibility pass,
+  Playwright e2e (`pnpm e2e`: signup → subscribe → redeem → scan → cancel), `docs/RUNBOOK.md`.
+- **All ten phases are built.** What's left is human: `docs/DECISIONS_PENDING.md` and the launch
+  checklist at the end of `docs/BUILD_PLAN.md`.
 - The human-readable record of every phase (decisions, deviations, gotchas) is `docs/BUILD_LOG.md`.

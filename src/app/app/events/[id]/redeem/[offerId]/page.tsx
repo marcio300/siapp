@@ -13,7 +13,7 @@ import { redeemAction } from "../../../actions";
 export default async function RedeemPage({ params }: { params: Promise<{ id: string; offerId: string }> }) {
   const member = await requireOnboardedMember();
   const { id, offerId } = await params;
-  const offer = await prisma.offer.findUnique({ where: { id: offerId }, include: { event: { include: { city: true } } } });
+  const offer = await prisma.offer.findUnique({ where: { id: offerId }, include: { event: { include: { city: true, producer: { select: { name: true } } } } } });
   if (!offer || offer.eventId !== id) notFound();
   const elig = await explainEligibility(member.id, offerId);
   if (!elig.ok) redirect(`/app/events/${id}?error=${encodeURIComponent(elig.message)}`);
@@ -59,6 +59,11 @@ export default async function RedeemPage({ params }: { params: Promise<{ id: str
           cancel for a full refund until {formatDate(cancelDeadline, tz)}. after that it&apos;s final — a no-show costs the keys.
           {base.cashCents > 0 ? " card payment opens next; your spot is held for 10 minutes." : ""}
         </p>
+        {base.cashCents > 0 && (
+          <p className="text-xs text-ink-muted">
+            you&apos;re paying SIAPP, the seller of record, on behalf of {offer.event.producer.name}: we take the payment, issue the ticket and handle refunds; the producer gets its share after the door scans you. price includes VAT. <Link href="/legal/terms" className="underline">terms</Link>.
+          </p>
+        )}
         <button className="btn btn-primary w-full">{base.cashCents > 0 ? `Pay ${formatMoney(base.cashCents)} and get in` : "Redeem — I'm in"}</button>
       </form>
     </main>

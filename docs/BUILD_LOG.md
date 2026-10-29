@@ -552,3 +552,69 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
 - `CRON_SECRET` must be set on Vercel before the first deploy; Vercel adds the bearer header itself.
 - Vercel Hobby allows only daily crons — the schedule assumes Pro (like EventOS).
 - No per-member email preferences / unsubscribe yet (transactional only).
+
+## Phase 10 — Polish, brand, PWA, legal, launch checklist (2026-10-29)
+
+**Shipped**
+
+- **Brand**: the member app was already on the BRAND.md tokens (dark default, red only for CTAs, the
+  key and the comma; grotesque "no" + serif-italic "but"). A sweep found no stray palette classes in
+  the member surfaces. Legal pages got their own typographic scale in `globals.css` (`.legal`).
+- **PWA**: `app/manifest.ts` (standalone, `/app` start, shortcuts to tickets and scanner, PNG icons
+  rasterised from `public/icon.svg` with sharp + a maskable variant), `public/sw.js` (network-first
+  navigations with the tickets list, ticket pages, home, wallet and scanner kept in a pages cache;
+  `/offline` fallback; cache-first `_next/static`; stale-while-revalidate for selfies and images;
+  `/api/*` never cached), `PwaRegister` mounted in the member layout and the scanner (dev opt-in with
+  `?sw=1` so hot reload isn't fought), `/offline` page, Apple web-app metadata and theme colour,
+  `Service-Worker-Allowed` + security headers in `next.config.ts`.
+- **Wallet passes**: EventOS has none to port → deferred (decision #15).
+- **i18n**: next-intl scaffold without locale routing (`src/i18n/request.ts`, `messages/en.json`,
+  plugin in `next.config.ts`, `NextIntlClientProvider` in the root layout). The sign-in page, legal nav
+  and offline page read their copy through it; everything else stays literal until `pt` is written.
+- **Legal**: `/legal/terms` (membership, keys, auto-renewal and cancellation, 14-day withdrawal,
+  redemptions and the 24 h rule, seller-of-record for discounted tickets, fair use, deletion,
+  liability), `/legal/privacy` (data table with purpose / basis / retention, door and producer
+  visibility, rights, automated decisions), `/legal/cookies` (three cookies, local storage, device
+  fingerprint). A "draft for counsel review" banner sits on all three. `LegalFooter` on sign-in and
+  profile. **Before checkout**: the plan grid is one form with an auto-renewal / cancellation /
+  withdrawal disclosure and a required "I understand the plan renews automatically" checkbox,
+  enforced again in `choosePlanAction`. **Merchant of record**: the redeem sheet for discounted
+  tickets says SIAPP is the seller of record on behalf of the producer, VAT included.
+- **Account deletion**: `deleteAccount(memberId)` (`src/domain/identity/deletion.ts`): cancels
+  upcoming redemptions where the cutoff allows (the rest become no-shows), cancels the Stripe
+  subscription immediately (`BillingStripe.subscriptions.cancel`), expires plan keys, removes selfie,
+  ID photo, devices, sessions and tokens, anonymises the row (`deleted+<id>@deleted.siapp.invalid`,
+  `Member.deletedAt` — migration `20261029150000_member_deleted_at`) and keeps ledger / redemptions /
+  scans / settlement lines for the records. `/app/profile/delete` explains the consequences and asks
+  the member to type DELETE; sign-in shows a farewell notice.
+- **Scanner accessibility**: 44–48 px targets on every control, 16 px inputs, `role="status"
+  aria-live="assertive"` on the result card, labelled inputs and buttons, alt text on the selfie, a
+  solid stop-camera pill; the floods already pass contrast (ok-green and amber with ink, red with
+  white).
+- **Playwright e2e** (`pnpm e2e`, `playwright.config.ts`, `e2e/`): a dedicated embedded Postgres on
+  5435 provisioned by `e2e/provision.ts` (through tsx — Playwright's loader can't resolve `@/`), `next
+  dev` on 3100 with the console email adapter writing JSON to `e2e/.outbox` (`EMAIL_OUTBOX_DIR`),
+  Pixel 7 viewport. The flow: magic-link signup → onboarding → selfie upload → welcome email →
+  subscribe through **signed synthetic Stripe webhooks** (checkout.session.completed + invoice.paid,
+  signature from `stripe.webhooks.generateTestHeaderString`) → SOCIAL + 30 keys visible → redeem a free
+  offer → QR on the ticket page → door signs in with code + PIN and scans OK, then "Already scanned"
+  → cancel outside the window (keys back) and inside the window (no cancel control, ticket final) →
+  wallet shows 20 keys. 4/4 green, ~70 s.
+- `docs/RUNBOOK.md`: env vars, local dev, deploying to Vercel + Neon, Stripe webhook + portal + tax,
+  cron, Neon branches, onboarding a producer and an event, the door, fraud flags, settlements,
+  member support, pre-launch checks.
+- Tests: `tests/deletion.test.ts` (1 → 115 total) + the e2e suite.
+
+**Decisions**
+
+- No consent banner: only strictly necessary cookies exist; the device fingerprint is disclosed under
+  fraud prevention (legitimate interest). Counsel to confirm.
+- Deletion forfeits purchased keys (terms §8) and keeps anonymised financial records; the email is
+  freed so the person can start over.
+- The service worker is opt-in in development (`?sw=1`) to keep hot reload sane.
+
+**Open**
+
+- Legal copy is a draft: company details, addresses and the withdrawal form need the real entity.
+- Push notifications, `pt` messages, Apple/Google Wallet passes: later.
+- The e2e suite shares `.next` with `pnpm dev` — don't run both at once.

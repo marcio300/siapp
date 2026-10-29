@@ -42,6 +42,8 @@ export async function choosePlanAction(formData: FormData): Promise<void> {
   const parsed = PriceSchema.safeParse({ planPriceId: formData.get("planPriceId") });
   if (!parsed.success) redirect("/app/membership?error=Pick%20a%20plan");
   const mode = formData.get("mode") === "change" ? "change" : "subscribe";
+  // EU consumer law: the auto-renewal disclosure must be acknowledged before the order (also enforced client-side).
+  if (formData.get("acceptTerms") !== "on") redirect("/app/membership?error=" + encodeURIComponent("Tick the box to confirm you understand the plan renews automatically."));
   let url: string | null = null;
   try {
     if (mode === "change") {

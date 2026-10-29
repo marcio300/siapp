@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { prisma } from "@/lib/db";
 import { scannerSummary, ticketManifest } from "@/domain/scanner";
 import { getScannerSession } from "@/lib/scanner-auth";
+import { PwaRegister } from "@/components/pwa-register";
 import { Wordmark } from "@/components/wordmark";
 import { scannerLoginAction } from "./actions";
 import { ScannerClient } from "./scanner-client";
@@ -17,7 +18,13 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
     const event = await prisma.event.findUnique({ where: { id: session.eventId }, select: { id: true } });
     if (event) {
       const [summary, manifest] = await Promise.all([scannerSummary(session.eventId), ticketManifest(session.eventId)]);
-      if (summary && manifest) return <ScannerClient initialSummary={summary} initialManifest={manifest} device={session.device} />;
+      if (summary && manifest)
+        return (
+          <>
+            <PwaRegister />
+            <ScannerClient initialSummary={summary} initialManifest={manifest} device={session.device} />
+          </>
+        );
     }
   }
 

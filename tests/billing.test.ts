@@ -48,6 +48,9 @@ function fakeStripe() {
       },
     },
     subscriptions: {
+      async cancel() {
+        return {};
+      },
       async retrieve(id) {
         return { id, items: { data: [{ id: `si_${id}`, price: { id: "price_old" } }] } };
       },

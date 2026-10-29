@@ -2,6 +2,8 @@ import { signOut } from "@/lib/auth";
 import { requireOnboardedMember } from "@/lib/authz";
 import { verificationStatus } from "@/domain/identity";
 import { formatDateOnly } from "@/lib/format";
+import Link from "next/link";
+import { LegalFooter } from "@/components/legal-footer";
 import { MemberHeader, Notice } from "@/components/member-nav";
 import { deleteIdPhotoAction, uploadIdPhotoAction, uploadSelfieAction } from "./actions";
 
@@ -84,8 +86,11 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <div className="flex justify-between"><dt>Date of birth</dt><dd className="text-ink">{member.dateOfBirth ? formatDateOnly(member.dateOfBirth, "UTC") : "—"}</dd></div>
           <div className="flex justify-between"><dt>Referral code</dt><dd className="font-mono text-ink">{member.referralCode}</dd></div>
         </dl>
-        <p className="mt-6 text-xs text-ink-muted">account deletion and the legal pages arrive in Phase 10.</p>
+        <div className="mt-6 flex items-center justify-between text-xs">
+          <Link href="/app/profile/delete" className="text-ink-muted hover:text-red">Delete account</Link>
+        </div>
       </section>
+      <LegalFooter />
     </main>
   );
 }

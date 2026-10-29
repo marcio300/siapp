@@ -399,7 +399,7 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
             </p>
           </div>
           <form action={scannerLogoutAction}>
-            <button className="btn btn-ghost !px-2 text-xs">Sign out</button>
+            <button className="btn btn-ghost min-h-12 !px-3 text-sm">Sign out</button>
           </form>
         </header>
 
@@ -409,7 +409,7 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
             {online ? "Online" : "Offline — scans are queued"}
           </span>
           {queued > 0 && (
-            <button onClick={() => void flush()} className="rounded-full bg-ink-dark px-2.5 py-1 font-semibold text-cream">
+            <button onClick={() => void flush()} className="min-h-11 rounded-full bg-ink-dark px-4 font-semibold text-cream">
               {queued} queued · sync now
             </button>
           )}
@@ -428,7 +428,7 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
               <div key={o.offerId} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{o.name}</p>
-                  <p className="text-xs text-ink-dark-muted">{o.type.toLowerCase().replace("_", " ")}</p>
+                  <p className="text-sm text-ink-dark-muted">{o.type.toLowerCase().replace("_", " ")}</p>
                 </div>
                 <div className="text-right tabular-nums">
                   {win ? (
@@ -454,14 +454,14 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
 
         {/* result */}
         {shown && (
-          <section className={`rounded-3xl p-5 ${FLOOD[shown.result]}`}>
+          <section role="status" aria-live="assertive" aria-atomic="true" className={`rounded-3xl p-5 ${FLOOD[shown.result]}`}>
             <div className="flex items-start justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
                 {LABEL[shown.result]}
                 {shown.offline ? " · offline" : ""}
                 {shown.unverified ? " · unverified" : ""}
               </p>
-              <button onClick={() => setShown(null)} className="text-xs font-semibold opacity-70">
+              <button onClick={() => setShown(null)} aria-label="Dismiss result" className="-m-2 min-h-11 min-w-11 rounded-lg p-2 text-sm font-semibold underline underline-offset-2">
                 dismiss
               </button>
             </div>
@@ -469,7 +469,7 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
               <div className="mt-3 flex flex-col items-center text-center">
                 {shown.ticket.photoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={shown.ticket.photoUrl} alt="" className="h-56 w-56 rounded-3xl border-4 border-white/60 object-cover shadow-lg" />
+                  <img src={shown.ticket.photoUrl} alt={`Selfie of ${shown.ticket.memberName}`} className="h-56 w-56 rounded-3xl border-4 border-white/60 object-cover shadow-lg" />
                 ) : (
                   <div className="flex h-56 w-56 items-center justify-center rounded-3xl border-4 border-dashed border-white/60 text-sm font-semibold opacity-80">no selfie on file — check ID</div>
                 )}
@@ -491,18 +491,18 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
             {shown.ticket && (
               <div className="mt-4 border-t border-black/15 pt-3">
                 {disputeState === "idle" && (
-                  <button onClick={() => setDisputeState("open")} className="text-sm font-semibold underline underline-offset-2 opacity-80">
+                  <button onClick={() => setDisputeState("open")} className="min-h-11 rounded-lg px-1 text-base font-semibold underline underline-offset-2">
                     Flag dispute
                   </button>
                 )}
                 {disputeState === "open" && (
                   <div className="flex flex-col gap-2">
-                    <textarea value={disputeNote} onChange={(e) => setDisputeNote(e.target.value)} rows={2} placeholder="What's wrong? (photo doesn't match, +1 is someone else…)" className="input !bg-white/90" />
+                    <textarea value={disputeNote} onChange={(e) => setDisputeNote(e.target.value)} rows={2} aria-label="Dispute note" placeholder="What's wrong? (photo doesn't match, +1 is someone else…)" className="input !bg-white/90 !text-base" />
                     <div className="flex gap-2">
-                      <button onClick={() => void sendDispute()} disabled={!disputeNote.trim()} className="btn bg-ink-dark text-cream">
+                      <button onClick={() => void sendDispute()} disabled={!disputeNote.trim()} className="btn min-h-12 bg-ink-dark !px-5 !text-base text-cream">
                         Flag it
                       </button>
-                      <button onClick={() => setDisputeState("idle")} className="btn btn-ghost !text-ink-dark">
+                      <button onClick={() => setDisputeState("idle")} className="btn btn-ghost min-h-12 !px-5 !text-base !text-ink-dark">
                         Cancel
                       </button>
                     </div>
@@ -519,7 +519,7 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
           <div className="rounded-2xl border border-warn/60 bg-warn/15 p-3 text-sm">
             <div className="flex items-center justify-between">
               <p className="font-semibold">Sync surprises</p>
-              <button onClick={() => setSyncReport([])} className="text-xs font-semibold text-ink-dark-muted">
+              <button onClick={() => setSyncReport([])} className="min-h-11 px-2 text-sm font-semibold text-ink-dark-muted underline">
                 clear
               </button>
             </div>
@@ -538,8 +538,8 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
         <div className="card relative overflow-hidden !bg-black">
           {scanning ? (
             <>
-              <video ref={videoRef} className="aspect-square w-full object-cover" muted playsInline />
-              <button onClick={() => setScanning(false)} className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-white/30 bg-white/20 px-5 py-2 text-sm font-medium text-white backdrop-blur">
+              <video ref={videoRef} className="aspect-square w-full object-cover" muted playsInline aria-label="Camera preview" />
+              <button onClick={() => setScanning(false)} className="absolute bottom-3 left-1/2 min-h-12 -translate-x-1/2 rounded-full border border-white/40 bg-black/60 px-6 text-base font-semibold text-white backdrop-blur">
                 Stop camera
               </button>
             </>
@@ -562,15 +562,15 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
           }}
           className="flex gap-2"
         >
-          <input value={manualCode} onChange={(e) => setManualCode(e.target.value)} placeholder="Type the ticket code" autoComplete="off" spellCheck={false} className="input flex-1 !py-3 font-mono" />
-          <button disabled={busy || !manualCode.trim()} className="btn btn-outline shrink-0">
+          <input value={manualCode} onChange={(e) => setManualCode(e.target.value)} aria-label="Ticket code" placeholder="Type the ticket code" autoComplete="off" spellCheck={false} className="input min-h-12 flex-1 font-mono !text-base" />
+          <button disabled={busy || !manualCode.trim()} className="btn btn-outline min-h-12 shrink-0 !px-5 !text-base">
             Check
           </button>
         </form>
 
         {/* lookup by name */}
         <div className="card p-3">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Can't scan? Search by name, +1 or email" className="input !py-3" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search tickets by name, plus-one or email" placeholder="Can't scan? Search by name, +1 or email" className="input min-h-12 !text-base" />
           {hits && (
             <ul className="mt-2 divide-y divide-line-light">
               {hits.length === 0 && <li className="py-2 text-sm text-ink-dark-muted">Nobody by that name on this event.</li>}
@@ -591,7 +591,7 @@ export function ScannerClient({ initialSummary, initialManifest, device }: { ini
                       {h.offerName} · {h.status === "CHECKED_IN" && h.checkedInAt ? `in at ${timeIn(h.checkedInAt, tz)}` : h.status.toLowerCase().replace("_", " ")}
                     </p>
                   </div>
-                  <button onClick={() => { setQuery(""); void submitCode(h.code); }} disabled={busy} className="btn btn-outline !px-3 text-xs">
+                  <button onClick={() => { setQuery(""); void submitCode(h.code); }} disabled={busy} aria-label={`Scan ${h.memberName}`} className="btn btn-outline min-h-11 !px-4 text-sm">
                     Scan
                   </button>
                 </li>

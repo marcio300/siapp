@@ -17,6 +17,7 @@ export interface BillingStripe {
   subscriptions: {
     retrieve(id: string): Promise<{ id: string; items: { data: { id: string; price: { id: string } }[] } }>;
     update(id: string, params: Stripe.SubscriptionUpdateParams): Promise<unknown>;
+    cancel(id: string): Promise<unknown>;
   };
   billingPortal: {
     sessions: { create(params: Stripe.BillingPortal.SessionCreateParams): Promise<{ url: string }> };

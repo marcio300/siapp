@@ -36,6 +36,13 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
     assertDevStandInAllowed("Console email (no EMAIL_API_KEY)", "set EMAIL_API_KEY and EMAIL_FROM");
     console.log(`[email:dev] to=${input.to} subject="${input.subject}"`);
     console.log(input.text ?? input.html);
+    // EMAIL_OUTBOX_DIR: the Playwright e2e run reads magic links and notices from here.
+    if (process.env.EMAIL_OUTBOX_DIR) {
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      mkdirSync(process.env.EMAIL_OUTBOX_DIR, { recursive: true });
+      writeFileSync(join(process.env.EMAIL_OUTBOX_DIR, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`), JSON.stringify({ ...input, attachments: input.attachments?.map((a) => a.filename) }, null, 2));
+    }
     if (input.attachments?.length) console.log(`[email:dev] attachments: ${input.attachments.map((a) => a.filename).join(", ")}`);
     return;
   }

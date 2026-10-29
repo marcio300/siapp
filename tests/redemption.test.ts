@@ -52,7 +52,10 @@ function fakeStripe() {
   const stripe: BillingStripe = {
     customers: { async create() { return { id: "cus_r" }; } },
     checkout: { sessions: { async create(params) { calls.sessions.push(params); return { id: `cs_r${calls.sessions.length}`, url: "https://checkout.test" }; } } },
-    subscriptions: { async retrieve(id) { return { id, items: { data: [] } }; }, async update() { return {}; } },
+    subscriptions: {
+      async cancel() {
+        return {};
+      }, async retrieve(id) { return { id, items: { data: [] } }; }, async update() { return {}; } },
     billingPortal: { sessions: { async create() { return { url: "" }; } } },
     refunds: { async create(params) { calls.refunds.push(params); return { id: `re_${calls.refunds.length}` }; } },
   };

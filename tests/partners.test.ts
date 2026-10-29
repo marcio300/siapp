@@ -35,7 +35,10 @@ describe("partner communities (ELL bridge)", () => {
     const stripe: BillingStripe = {
       customers: { async create() { return { id: "cus" }; } },
       checkout: { sessions: { async create() { return { id: "cs", url: "" }; } } },
-      subscriptions: { async retrieve(id) { return { id, items: { data: [] } }; }, async update(id, params) { stripeCalls.push({ id, params }); return {}; } },
+      subscriptions: {
+      async cancel() {
+        return {};
+      }, async retrieve(id) { return { id, items: { data: [] } }; }, async update(id, params) { stripeCalls.push({ id, params }); return {}; } },
       billingPortal: { sessions: { async create() { return { url: "" }; } } },
       refunds: { async create() { return { id: "re" }; } },
     };

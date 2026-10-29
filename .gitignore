@@ -28,6 +28,13 @@ coverage/
 # embedded Postgres data (pnpm dev:local / pnpm test)
 .devdb/
 .testdb/
+.e2edb/
+
+# e2e artifacts
+/e2e/.outbox/
+/e2e/.state.json
+/test-results/
+/playwright-report/
 
 # misc
 *.tsbuildinfo

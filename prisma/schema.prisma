@@ -177,6 +177,7 @@ model Member {
   partnerClaimTokenAt DateTime?
   bannedAt        DateTime?
   banReason       String?
+  deletedAt       DateTime? // account deleted by the member: row anonymised, kept for the ledger/settlement records
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

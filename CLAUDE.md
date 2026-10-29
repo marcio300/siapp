@@ -326,11 +326,29 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   `vercel.json` schedules all 12 (5-min / hourly staggered / daily); `pnpm jobs:event-reminders|keys-expiring|
   tourist-expiring`. `src/lib/email.ts` `setEmailSinkForTests`. Tests `tests/notifications.test.ts` (9 → suite
   114). Owner decisions are tracked in `docs/DECISIONS_PENDING.md`.
+- **Done — Phase 10 (polish, PWA, legal, e2e, runbook)**: PWA — `src/app/manifest.ts`, `public/sw.js` (network-first
+  navigations; pages cache for /app, /app/wallet, /app/tickets*, /scan, /offline; cache-first `_next/static`;
+  SWR media; never `/api/*`), `src/components/pwa-register.tsx` (prod always, dev with `?sw=1`), `/offline`,
+  icons in `public/icons/` (sharp from `public/icon.svg`), security headers + `Service-Worker-Allowed` in
+  `next.config.ts`. i18n — next-intl w/o routing: `src/i18n/request.ts` (locale en), `messages/en.json`,
+  provider in root layout; sign-in / legal nav / offline use `getTranslations`. Legal — `src/app/legal/{terms,
+  privacy,cookies}` + layout w/ draft banner, `.legal` CSS, `src/components/legal-footer.tsx`; membership plan
+  grid is ONE form (`button name="planPriceId"`) with the auto-renewal disclosure + required `acceptTerms`
+  (checked again in `choosePlanAction`); redeem sheet MoR note for cash offers. Deletion —
+  `src/domain/identity/deletion.ts` `deleteAccount(memberId)` (cancel cancellable redemptions, Stripe
+  `subscriptions.cancel` (added to `BillingStripe` + test fakes), expire plan keys, remove photos/devices/
+  sessions, anonymise row, `Member.deletedAt` — migration `20261029150000_member_deleted_at`), `/app/profile/delete`
+  + `deleteAccountAction` (type DELETE, signOut → `/sign-in?deleted=1`). Scanner a11y (min-h-11/12 targets,
+  `role="status" aria-live`, labels). `src/lib/email.ts` `EMAIL_OUTBOX_DIR` (dev: JSON per email). E2E —
+  `pnpm e2e` = `playwright.config.ts` (embedded PG 5435 `.e2edb`, `e2e/global-setup.ts` → `e2e/provision.ts` via
+  tsx, next dev :3100, outbox `e2e/.outbox`, `STRIPE_WEBHOOK_SECRET=whsec_e2e`), `e2e/flow.spec.ts` (signup →
+  signed synthetic Stripe webhooks → redeem → scan → cancel in/out of window). `docs/RUNBOOK.md`. Tests
+  `tests/deletion.test.ts` (1 → suite 115) + e2e 4. ALL 10 PHASES DONE — next: owner decisions
+  (`docs/DECISIONS_PENDING.md`), launch checklist in `docs/BUILD_PLAN.md`.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE
-  only gets a MONTHLY plan. shadcn/ui not installed yet (no components needed; add when the member app
-  starts). `vercel.json` crons landed in Phase 9.
+  only gets a MONTHLY plan. shadcn/ui never needed (hand-rolled components on the brand tokens). `vercel.json` crons landed in Phase 9.
 - **Gotchas**: embedded-postgres tarballs can't carry the `lib*.so.N` / `*.dylib` symlinks their binaries
   need; the package's postinstall recreates them from `native/pg-symlinks.json`, but pnpm 10 skips install
   scripts unless listed in `package.json` `pnpm.onlyBuiltDependencies` (done: embedded-postgres platform

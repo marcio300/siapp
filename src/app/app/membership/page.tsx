@@ -111,7 +111,8 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
             ? "upgrades are prorated by Stripe. keys for the new tier land with your next period, not today."
             : "quarterly saves 10%. yearly gets two months free. keys land every month either way."}
         </p>
-        <div className="mt-4 flex flex-col gap-3">
+        <form action={choosePlanAction} className="mt-4 flex flex-col gap-3">
+          <input type="hidden" name="mode" value={membership.isRecurring ? "change" : "subscribe"} />
           {[...byTier.entries()].map(([tierCode, tierPrices]) => {
             const tier = tierPrices[0]!.plan.tier;
             return (
@@ -126,21 +127,20 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
                   {tierPrices.map((p) => {
                     const current = sub?.planId === p.planId && (membership.isRecurring || membership.isPaid);
                     return (
-                      <form key={p.id} action={choosePlanAction}>
-                        <input type="hidden" name="planPriceId" value={p.id} />
-                        <input type="hidden" name="mode" value={membership.isRecurring ? "change" : "subscribe"} />
-                        <button
-                          disabled={current}
-                          className={`w-full rounded-xl border px-2 py-2 text-center text-sm transition ${
-                            current ? "border-red bg-red/10 text-ink" : "border-line hover:border-red-soft"
-                          }`}
-                        >
-                          <span className="block font-semibold">{formatMoney(p.amountCents, p.currency)}</span>
-                          <span className="block text-xs text-ink-muted">
-                            {current ? "current" : `per ${PERIOD_LABEL[p.plan.period]}`}
-                          </span>
-                        </button>
-                      </form>
+                      <button
+                        key={p.id}
+                        name="planPriceId"
+                        value={p.id}
+                        disabled={current}
+                        className={`w-full rounded-xl border px-2 py-2 text-center text-sm transition ${
+                          current ? "border-red bg-red/10 text-ink" : "border-line hover:border-red-soft"
+                        }`}
+                      >
+                        <span className="block font-semibold">{formatMoney(p.amountCents, p.currency)}</span>
+                        <span className="block text-xs text-ink-muted">
+                          {current ? "current" : `per ${PERIOD_LABEL[p.plan.period]}`}
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
@@ -150,7 +150,19 @@ export default async function MembershipPage({ searchParams }: { searchParams: P
           {prices.length === 0 && (
             <Notice tone="error">No plans are on sale yet — prices need a Stripe sync (backoffice → Plans).</Notice>
           )}
-        </div>
+          <div className="night-card mt-1 p-4 text-xs text-ink-muted">
+            <p className="font-semibold text-ink">Before you subscribe (EU consumer law, in plain words)</p>
+            <ul className="mt-1 list-disc space-y-1 pl-4">
+              <li>Your plan <strong className="text-ink">renews automatically</strong> at the end of each period at the price shown, until you cancel. Cancel any time here (Membership → Cancel renewal); you keep the period you paid for.</li>
+              <li>Plan keys expire at the end of each period. Purchased keys don&apos;t.</li>
+              <li>You can withdraw within 14 days; keys used in that time are deducted. Prices include VAT.</li>
+            </ul>
+            <label className="mt-3 flex items-start gap-2 text-sm text-ink">
+              <input type="checkbox" name="acceptTerms" required className="mt-0.5 h-4 w-4 accent-red" />
+              <span>I understand the plan renews automatically and I agree to the <a href="/legal/terms" target="_blank" className="underline">terms</a>.</span>
+            </label>
+          </div>
+        </form>
       </section>
 
       {tourist && !membership.isPaid && (

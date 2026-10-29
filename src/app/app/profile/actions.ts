@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/authz";
-import { PhotoError, deleteIdPhoto, storeIdPhoto, storeSelfie } from "@/domain/identity";
+import { signOut } from "@/lib/auth";
+import { DeletionError, PhotoError, deleteAccount, deleteIdPhoto, storeIdPhoto, storeSelfie } from "@/domain/identity";
 
 async function fileInput(formData: FormData, field: string) {
   const file = formData.get(field);
@@ -40,4 +41,18 @@ export async function deleteIdPhotoAction(): Promise<void> {
   const member = await requireMember();
   await deleteIdPhoto(member.id);
   redirect("/app/profile?idphoto=deleted");
+}
+
+/** Spec §15 "delete account": irreversible; signs the member out afterwards. */
+export async function deleteAccountAction(formData: FormData): Promise<void> {
+  const member = await requireMember();
+  if (String(formData.get("confirm") ?? "").trim().toUpperCase() !== "DELETE") redirect("/app/profile/delete?error=" + encodeURIComponent("Type DELETE to confirm."));
+  try {
+    await deleteAccount(member.id);
+  } catch (e) {
+    if (e instanceof DeletionError) redirect(`/app/profile/delete?error=${encodeURIComponent(e.message)}`);
+    console.error("account deletion failed:", e);
+    redirect("/app/profile/delete?error=" + encodeURIComponent("Something went wrong. Nothing was deleted — try again or write to privacy@siapp.club."));
+  }
+  await signOut({ redirectTo: "/sign-in?deleted=1" });
 }

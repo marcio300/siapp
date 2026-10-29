@@ -1,0 +1,22 @@
+{
+  "signIn": {
+    "title": "sorry, members only.",
+    "tagline": "we'll email you a sign-in link. no password, ever.",
+    "placeholder": "you@example.com",
+    "submit": "Email me a link",
+    "sentTitle": "check your inbox.",
+    "sentTagline": "the link is your key — it works once and expires in 15 minutes.",
+    "errorDisposable": "sorry, throwaway email addresses don't get in. use one you'll keep.",
+    "errorGeneric": "sorry, we couldn't sign you in with that address."
+  },
+  "legal": {
+    "terms": "Terms",
+    "privacy": "Privacy",
+    "cookies": "Cookies",
+    "draft": "Draft for counsel review — not yet the final wording."
+  },
+  "offline": {
+    "title": "sorry, no signal.",
+    "body": "tickets you've opened before are still here. everything else needs the network."
+  }
+}
