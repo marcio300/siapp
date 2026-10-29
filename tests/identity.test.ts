@@ -34,12 +34,11 @@ describe("identity", () => {
   });
 
   describe("onboarding", () => {
-    it("rejects members under 24, missing attestation and inactive cities", async () => {
+    it("rejects members under 24 and inactive cities", async () => {
       const m = await createMember();
       const city = await prisma.city.findFirstOrThrow();
-      const base = { name: "Ana", dateOfBirth: yearsAgo(30), ageAttested: true as const, cityId: city.id };
+      const base = { name: "Ana", dateOfBirth: yearsAgo(30), cityId: city.id };
       await expect(completeOnboarding(m.id, { ...base, dateOfBirth: yearsAgo(24, 1) })).rejects.toThrow(/24\+/);
-      await expect(completeOnboarding(m.id, { ...base, ageAttested: false as never })).rejects.toBeInstanceOf(OnboardingError);
       await expect(completeOnboarding(m.id, { ...base, dateOfBirth: "2030-01-01" })).rejects.toBeInstanceOf(OnboardingError);
       await expect(completeOnboarding(m.id, { ...base, name: "A" })).rejects.toBeInstanceOf(OnboardingError);
       const inactive = await prisma.city.create({ data: { name: "Porto", country: "PT", timezone: "Europe/Lisbon", currency: "EUR", isActive: false } });
@@ -64,7 +63,6 @@ describe("identity", () => {
       const result = await completeOnboarding(m.id, {
         name: "  Ana Silva ",
         dateOfBirth: yearsAgo(28),
-        ageAttested: true,
         cityId: city.id,
         referralCode: referrer.referralCode.toLowerCase(),
         partnerClaimToken: token,
@@ -78,14 +76,14 @@ describe("identity", () => {
       expect(verificationStatus(saved)).toMatchObject({ onboarded: true, selfie: false, canRedeem: false, nextStep: "/app/profile" });
 
       // Re-running keeps the first attestation and never duplicates the referral.
-      const again = await completeOnboarding(m.id, { name: "Ana", dateOfBirth: yearsAgo(28), ageAttested: true, cityId: city.id, referralCode: referrer.referralCode });
+      const again = await completeOnboarding(m.id, { name: "Ana", dateOfBirth: yearsAgo(28), cityId: city.id, referralCode: referrer.referralCode });
       expect(again.referral).toBe("already_referred");
       expect(await prisma.referral.count({ where: { inviteeId: m.id } })).toBe(1);
       // Own code and unknown codes are reported, not recorded.
       const other = await createMember();
-      expect((await completeOnboarding(other.id, { name: "Bo", dateOfBirth: yearsAgo(40), ageAttested: true, cityId: city.id, referralCode: other.referralCode })).referral).toBe("self");
-      expect((await completeOnboarding(other.id, { name: "Bo", dateOfBirth: yearsAgo(40), ageAttested: true, cityId: city.id, referralCode: "NOPE1234" })).referral).toBe("unknown_code");
-      expect((await completeOnboarding(other.id, { name: "Bo", dateOfBirth: yearsAgo(40), ageAttested: true, cityId: city.id, partnerClaimToken: "garbage" })).partnerClaim).toBe("invalid");
+      expect((await completeOnboarding(other.id, { name: "Bo", dateOfBirth: yearsAgo(40), cityId: city.id, referralCode: other.referralCode })).referral).toBe("self");
+      expect((await completeOnboarding(other.id, { name: "Bo", dateOfBirth: yearsAgo(40), cityId: city.id, referralCode: "NOPE1234" })).referral).toBe("unknown_code");
+      expect((await completeOnboarding(other.id, { name: "Bo", dateOfBirth: yearsAgo(40), cityId: city.id, partnerClaimToken: "garbage" })).partnerClaim).toBe("invalid");
     });
   });
 

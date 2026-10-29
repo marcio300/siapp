@@ -4,8 +4,8 @@ import { isReferralCodeActive } from "@/domain/referrals/status";
 import { prisma as defaultPrisma } from "@/lib/db";
 
 /**
- * Onboarding (spec §10, §15): name, date of birth with an explicit 24+
- * attestation, home city, optional referral code and partner claim token.
+ * Onboarding (spec §10, §15): name, date of birth (must be 24+), home city,
+ * optional referral code and partner claim token.
  * Completing it stamps `Member.onboardedAt`, which gates the member app.
  */
 
@@ -33,7 +33,6 @@ export const OnboardingSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter your date of birth")
     .transform((s) => new Date(`${s}T00:00:00Z`))
     .refine((d) => !Number.isNaN(d.getTime()), "Enter a real date"),
-  ageAttested: z.literal(true, { errorMap: () => ({ message: "You need to confirm you're 24 or older" }) }),
   cityId: z.string().min(1, "Pick your city"),
   referralCode: z
     .string()

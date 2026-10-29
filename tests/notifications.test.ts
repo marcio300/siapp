@@ -49,7 +49,7 @@ describe("notifications (spec §16) + cron", () => {
   it("welcome: once, after the first onboarding, with the free keys", async () => {
     const m = await createMember();
     await grantPlanKeys(m.id, 2, new Date(Date.now() + 30 * DAY), { reference: `free:${m.id}` });
-    const input = { name: "Ana Silva", dateOfBirth: "1990-01-01", ageAttested: true as const, cityId };
+    const input = { name: "Ana Silva", dateOfBirth: "1990-01-01", cityId };
     await completeOnboarding(m.id, input);
     expect(subjects()).toEqual(["you're in. sort of."]);
     expect(sent[0]).toMatchObject({ to: m.email, text: expect.stringMatching(/ana, welcome\./) });
