@@ -461,3 +461,50 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
   existing subscribers should use `STRIPE_COUPON` or `KEYS`.
 - EventOS's issuing side is not built yet (the contract is in `docs/PARTNER_TOKEN.md`).
 - The "Invite" tab makes the member nav scroll on narrow phones.
+
+## Phase 8 — Settlements (2026-10-29)
+
+**Shipped**
+
+- `src/domain/settlement`: `owedCents(face, discount%)` = `face × (100 − d) / 100` in integer
+  arithmetic, rounded half up; `settleEvent(eventId)` builds the `Settlement` + `SettlementLine`s for
+  a FINISHED event from tickets whose redemption is CHECKED_IN on a DISCOUNT_TICKET offer (free
+  tickets and guest lists settle nothing, unscanned / no-show / cancelled tickets never appear),
+  idempotent per event; an event with nothing owed gets a 0-amount row already PAID (reference
+  `nothing-owed`) so the hourly job stops revisiting it. `settleEvents()` is the job
+  (`pnpm jobs:settle-events`, hourly): settle every finished event without a settlement and email
+  the producer the statement with the ticket-by-ticket CSV attached. `markSettlementPaid(id,
+  {reference})` (reference required, OPEN only), `reopenSettlement`, `settlementStatement` +
+  `statementCsv` (formula-injection-safe cells, TOTAL row) + `statementFilename`,
+  `sendSettlementEmail` (sets `emailedAt`; false when the producer has no contact email).
+- `src/lib/email.ts` gained `attachments` (Resend's shape, base64) and `setEmailSinkForTests`;
+  `src/lib/csv.ts` ported from EventOS.
+- Backoffice `/admin/settlements`: totals (open amount, largest open, producers owed), filters by
+  producer and status, per row CSV download (`GET /api/admin/settlements/[id]/csv`, OPS+), send /
+  re-send statement, ADMIN "Mark paid" with a reference and "Reopen"; "Settle finished events now".
+  Producer page gained a Settlements section (same row component), the dashboard gained Open
+  settlements, 30-day redemptions, no-show rate and fraud-queue tiles. Nav gained Settlements.
+- Tests `tests/settlement.test.ts` (4 → 105 total): rounding cases, invariant 10 (only scanned
+  discounted tickets, mixed statuses, free/guest-list excluded, +1 and formula-hostile names in
+  the CSV), idempotency, scan-after-finish timing, the job (one statement email with the CSV
+  attached, nothing-owed auto-paid, second run no-op), mark paid / reopen / re-send, a producer
+  without a contact email.
+
+**Decisions**
+
+- Scanning is the trigger, not redeeming: the line set is whatever the door scanned by the time the
+  job runs after the event is FINISHED. Late scans after a settlement exists are not added (the
+  settlement is a statement, not a live view); reopen + manual adjustment is a Phase 10 question.
+- A +1 on a discounted ticket settles the ticket's own face value only. What we charged the member
+  for the +1 (`plusOneExtraCashCents`) is kept by us until the owner decides how +1 cash splits —
+  the spec's rule is "per scanned ticket × face".
+- Nothing-owed events still get a settlement row (amount 0, PAID) so the ledger shows every
+  finished event was looked at.
+- The CSV is attached to the email rather than linked, since producers have no login (rule 10).
+
+**Open**
+
+- Owner decision needed on the +1 cash split (above).
+- No bank export / SEPA batch; staff pay manually and record the reference.
+- Statement email goes to `Producer.contactEmail`; events for producers without one settle silently
+  (shown as "no contact email" in the ledger).

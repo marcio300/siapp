@@ -131,5 +131,9 @@ tests/             Vitest suite + global DB setup
   communities (`src/domain/partners`: RS256 claim tokens verified with the partner's public key, one
   claim per member ever, promos: plan period / keys / Stripe coupon) with backoffice CRUD. Contract for
   the issuing side: `docs/PARTNER_TOKEN.md`.
-- Next: **Phase 8 — settlements**, see `docs/BUILD_PLAN.md`.
+- **Phase 8 — done**: settlements (`src/domain/settlement`: per finished event, face × (1 − discount%)
+  per *scanned* discounted ticket, hourly job `pnpm jobs:settle-events` emails the producer a statement
+  with CSV), backoffice ledger with mark-paid / reopen / re-send / CSV, producer page section,
+  dashboard tiles (open settlements, redemptions, no-show rate, fraud queue).
+- Next: **Phase 9 — notifications and jobs wiring**, see `docs/BUILD_PLAN.md`.
 - The human-readable record of every phase (decisions, deviations, gotchas) is `docs/BUILD_LOG.md`.

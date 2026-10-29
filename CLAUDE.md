@@ -300,6 +300,18 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   `/admin/referrals` (+ `runVestingAction`), `/admin/partners` (+ `[id]`, ADMIN edits, `partner-form.tsx`),
   member page Referrals table + claims. `docs/PARTNER_TOKEN.md` = the EventOS contract. Tests
   `tests/referrals.test.ts` (6) + `tests/partners.test.ts` (6) → suite 101.
+- **Done — Phase 8 (settlements)**: `src/domain/settlement/` — `calc.ts` (`owedCents(face, d)` = floor((face×(100−d)
+  + 50)/100), half up), `settle.ts` (`settleEvent(eventId)` idempotent by `Settlement.eventId @unique`: FINISHED only;
+  lines = tickets w/ redemption CHECKED_IN on DISCOUNT_TICKET offers; amount 0 → row PAID w/ reference
+  `NOTHING_OWED`; `settleEvents()` job = FINISHED events `settlements: {none}` → settle + `sendSettlementEmail`
+  (CSV attached, `emailedAt`; false w/o `Producer.contactEmail`); `markSettlementPaid(id, {reference})` updateMany
+  OPEN→PAID; `reopenSettlement`; `settlementStatement(id)` → rows w/ member/+1/offer/scannedAt; `statementCsv`,
+  `statementFilename`), `notify.ts`. `src/lib/email.ts` `SendEmailInput.attachments` + `setEmailSinkForTests`;
+  `src/lib/csv.ts` (EventOS port: `escapeCsvCell`, `toCsv`, `csvResponse`, `eur`). Job `pnpm jobs:settle-events`
+  (hourly). Backoffice `/admin/settlements` (+ `actions.ts` markPaid/reopen ADMIN, resend/run OPS; shared
+  `settlement-row.tsx` also used on the producer page), `GET /api/admin/settlements/[id]/csv` (OPS+), dashboard
+  tiles (open settlements €, redemptions 30 d, no-show rate, fraud queue). Tests `tests/settlement.test.ts` (4 →
+  suite 105). Open: +1 cash on discounted tickets is NOT settled (owner decision pending).
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE
