@@ -196,8 +196,25 @@ model Member {
   attendanceStats  AttendanceStats?
   stripeCustomer   StripeCustomer?
   cardFingerprints PaymentMethodFingerprint[]
+  notifications    NotificationLog[]
 
   @@index([cityId])
+}
+
+// One row per (member, kind, reference): the job-driven emails (reminders, expiry notices…) are
+// sent at most once per reference, however often the cron runs or a webhook retries.
+model NotificationLog {
+  id        String    @id @default(cuid())
+  memberId  String
+  kind      String // welcome | plan_keys_granted | keys_expiring | event_reminder | no_show | payment_failed | tourist_expiring
+  reference String
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, kind, reference])
+  @@index([kind, createdAt])
 }
 
 // Stripe card fingerprints seen per member (from charge.succeeded) — the SAME_CARD fraud rule.

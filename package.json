@@ -26,7 +26,10 @@
     "jobs:expire-pending-payments": "tsx scripts/jobs/expire-pending-payments.ts",
     "jobs:expire-waitlist-claims": "tsx scripts/jobs/expire-waitlist-claims.ts",
     "jobs:vest-referrals": "tsx scripts/jobs/vest-referrals.ts",
-    "jobs:settle-events": "tsx scripts/jobs/settle-events.ts"
+    "jobs:settle-events": "tsx scripts/jobs/settle-events.ts",
+    "jobs:event-reminders": "tsx scripts/jobs/event-reminders.ts",
+    "jobs:keys-expiring": "tsx scripts/jobs/keys-expiring.ts",
+    "jobs:tourist-expiring": "tsx scripts/jobs/tourist-expiring.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

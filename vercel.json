@@ -1,4 +1,17 @@
 {
   "regions": ["fra1"],
-  "crons": []
+  "crons": [
+    { "path": "/api/cron/monthly-grants", "schedule": "10 3 * * *" },
+    { "path": "/api/cron/expire-periods", "schedule": "5 * * * *" },
+    { "path": "/api/cron/mark-no-shows", "schedule": "15 * * * *" },
+    { "path": "/api/cron/vest-referrals", "schedule": "20 4 * * *" },
+    { "path": "/api/cron/settle-events", "schedule": "25 * * * *" },
+    { "path": "/api/cron/reconcile-balances", "schedule": "40 4 * * *" },
+    { "path": "/api/cron/purge-id-photos", "schedule": "50 4 * * *" },
+    { "path": "/api/cron/expire-waitlist-claims", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/expire-pending-payments", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/event-reminders", "schedule": "35 * * * *" },
+    { "path": "/api/cron/keys-expiring", "schedule": "45 * * * *" },
+    { "path": "/api/cron/tourist-expiring", "schedule": "55 * * * *" }
+  ]
 }

@@ -508,3 +508,47 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
 - No bank export / SEPA batch; staff pay manually and record the reference.
 - Statement email goes to `Producer.contactEmail`; events for producers without one settle silently
   (shown as "no contact email" in the ledger).
+
+## Phase 9 — Notifications and jobs wiring (2026-10-29)
+
+**Shipped**
+
+- Every email in spec §16 now exists. Already there: magic link (verify), redemption confirmation,
+  cancellation, waitlist spot, referral vested, producer settlement. New in `src/domain/notifications/
+  emails.ts`: welcome (first onboarding, mentions the free keys and the selfie), plan keys granted
+  (every paid grant: first payment, "renewed" on a cycle, monthly grants on quarterly/yearly — never
+  for FREE's monthly trickle), keys expiring in 3 days, event reminder (25 h before start, names the
+  cancellation cutoff or says the window is closed), no-show notice (keys lost), failed payment
+  (invoice.payment_failed), tourist pass expiring (24 h before).
+- `NotificationLog(memberId, kind, reference)` unique — `notifyOnce` claims the row, sends, stamps
+  `sentAt`; a failed send releases the row for the next run; a replayed webhook or a cron that runs
+  twice can never double-send. Migration `20261029120000_notification_log`.
+- Hooks: `grantForSubPeriod` (billing) → plan keys granted; `markPastDue` → failed payment (once per
+  invoice); `markNoShows` → no-show notice; `completeOnboarding` → welcome (first time only).
+- Jobs `sendEventReminders`, `sendKeysExpiringNotices`, `sendTouristExpiringNotices` in
+  `src/domain/notifications/jobs.ts` (+ `pnpm jobs:event-reminders|keys-expiring|tourist-expiring`).
+- Cron: one route `GET /api/cron/[job]` (Bearer `CRON_SECRET`, refuses when the secret is unset,
+  404 for unknown names, 500 with the message on failure, `maxDuration` 120 s) over the registry in
+  `src/lib/cron-jobs.ts` — the single list of the 12 scheduled jobs. `vercel.json` schedules them:
+  every 5 min expire-waitlist-claims + expire-pending-payments; hourly expire-periods, mark-no-shows,
+  settle-events, event-reminders, keys-expiring, tourist-expiring (staggered minutes); daily
+  monthly-grants 03:10, vest-referrals 04:20, reconcile-balances 04:40 (report only), purge-id-photos
+  04:50 (UTC).
+- Tests `tests/notifications.test.ts` (9 → 114 total): notifyOnce semantics incl. retry after a
+  failed send, welcome once, grant / replay / renewal / FREE silence / quarterly month 2, failed
+  payment once per invoice, reminder window + cutoff wording + cancelled skipped, keys expiring per
+  expiry date, tourist expiring, no-show once, cron auth / 404 / run / schedules all registered.
+
+**Decisions**
+
+- Reminder is sent to ACTIVE redemptions only (pending payment and held ones aren't tickets yet).
+- Keys-expiring notices key on the expiry date, so a member who gets a new grant with a later expiry
+  gets a fresh notice for that date; the FREE tier's 2 keys also qualify (it's a real expiry).
+- The failed-payment email keys on the Stripe invoice id; retries of the same invoice stay silent.
+- Push notifications (PWA) remain Phase 10+.
+
+**Open**
+
+- `CRON_SECRET` must be set on Vercel before the first deploy; Vercel adds the bearer header itself.
+- Vercel Hobby allows only daily crons — the schedule assumes Pro (like EventOS).
+- No per-member email preferences / unsubscribe yet (transactional only).

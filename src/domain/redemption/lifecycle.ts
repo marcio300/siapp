@@ -5,6 +5,8 @@ import { refundKeys } from "@/domain/keys/ledger";
 import { billingStripe } from "@/domain/billing/stripe-client";
 import { ensureStripeCustomer } from "@/domain/billing/checkout";
 import { RedemptionError } from "./errors";
+import { emailNoShow } from "@/domain/notifications/emails";
+import { notifyOnce } from "@/domain/notifications/log";
 import { emailRedemptionCancelled, emailRedemptionConfirmed, emailWaitlistSpot } from "./notify";
 import { issueTicket } from "./tickets";
 
@@ -157,12 +159,13 @@ export async function markNoShows(opts: Opts = {}): Promise<{ noShows: number; f
   const events = await db.event.findMany({ where: { status: "PUBLISHED", endsAt: { lte: now } }, select: { id: true } });
   let noShows = 0;
   for (const e of events) {
-    const active = await db.redemption.findMany({ where: { eventId: e.id, status: "ACTIVE" }, select: { id: true, memberId: true } });
+    const active = await db.redemption.findMany({ where: { eventId: e.id, status: "ACTIVE" }, include: { member: { select: { email: true } }, event: { select: { title: true } } } });
     for (const r of active) {
       const res = await db.redemption.updateMany({ where: { id: r.id, status: "ACTIVE" }, data: { status: "NO_SHOW" } });
       if (res.count === 0) continue;
       await db.attendanceStats.upsert({ where: { memberId: r.memberId }, update: { noShows: { increment: 1 } }, create: { memberId: r.memberId, noShows: 1 } });
       noShows++;
+      await notifyOnce({ memberId: r.memberId, kind: "no_show", reference: r.id }, () => emailNoShow({ to: r.member.email, eventTitle: r.event.title, keysLost: r.keyCost }), { db, now });
     }
     // Unpaid holds on a finished event can't be paid any more.
     await db.redemption.updateMany({ where: { eventId: e.id, status: "PENDING_PAYMENT" }, data: { status: "EXPIRED" } });

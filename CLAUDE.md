@@ -312,11 +312,25 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   `settlement-row.tsx` also used on the producer page), `GET /api/admin/settlements/[id]/csv` (OPS+), dashboard
   tiles (open settlements €, redemptions 30 d, no-show rate, fraud queue). Tests `tests/settlement.test.ts` (4 →
   suite 105). Open: +1 cash on discounted tickets is NOT settled (owner decision pending).
+- **Done — Phase 9 (notifications + cron)**: `src/domain/notifications/` — `log.ts` (`notifyOnce({memberId, kind,
+  reference}, send)` claims a `NotificationLog` row (unique memberId+kind+reference — migration
+  `20261029120000_notification_log`), sends, stamps `sentAt`; failure deletes the claim; never throws),
+  `emails.ts` (`emailWelcome`, `emailPlanKeysGranted({renewal})`, `emailKeysExpiring`, `emailEventReminder` (cutoff
+  wording from `cancelDeadlineAt` vs now), `emailNoShow`, `emailPaymentFailed`, `emailTouristExpiring`), `jobs.ts`
+  (`sendEventReminders` ACTIVE + event starts within 25 h, ref redemptionId; `sendKeysExpiringNotices` KeyBalance
+  planKeys>0 & expireAt within 3 d, ref expireAt ISO, re-checked via `getBalance`; `sendTouristExpiringNotices`
+  within 24 h, ref sub id). Hooks: billing `grantForSubPeriod` → plan_keys_granted ref = grant reference, never
+  FREE; `markPastDue(id, {invoiceId})` → payment_failed; `markNoShows` → no_show; `completeOnboarding` → welcome
+  (first time; dynamic imports to dodge cycles). Cron: `src/lib/cron-jobs.ts` `CRON_JOBS` registry (12 names) +
+  `cronAuthorized`/`runCronJob`; route `GET /api/cron/[job]` (Bearer CRON_SECRET, unset = refuse, 404 unknown);
+  `vercel.json` schedules all 12 (5-min / hourly staggered / daily); `pnpm jobs:event-reminders|keys-expiring|
+  tourist-expiring`. `src/lib/email.ts` `setEmailSinkForTests`. Tests `tests/notifications.test.ts` (9 → suite
+  114). Owner decisions are tracked in `docs/DECISIONS_PENDING.md`.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE
   only gets a MONTHLY plan. shadcn/ui not installed yet (no components needed; add when the member app
-  starts). `vercel.json` has no crons yet (Phase 9).
+  starts). `vercel.json` crons landed in Phase 9.
 - **Gotchas**: embedded-postgres tarballs can't carry the `lib*.so.N` / `*.dylib` symlinks their binaries
   need; the package's postinstall recreates them from `native/pg-symlinks.json`, but pnpm 10 skips install
   scripts unless listed in `package.json` `pnpm.onlyBuiltDependencies` (done: embedded-postgres platform

@@ -1,6 +1,8 @@
 import type { Plan, Prisma, PrismaClient, Subscription, Tier } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
 import { expirePlanKeys, grantPlanKeys } from "@/domain/keys";
+import { emailPlanKeysGranted } from "@/domain/notifications/emails";
+import { notifyOnce } from "@/domain/notifications/log";
 import { BillingError } from "./errors";
 import { addDays, addMonths, isRecurring, monthlyGrantWindow, nominalPeriodEnd, TOURIST_PASS_DAYS } from "./periods";
 
@@ -106,16 +108,24 @@ export async function ensureFreeSubscription(memberId: string, opts: Opts = {}):
 }
 
 /** Grant one month of keys for a subscription, idempotent per (sub, grantStart). */
-async function grantForSubPeriod(sub: SubscriptionWithPlan, grantStart: Date, expiresAt: Date, opts: Opts) {
+async function grantForSubPeriod(sub: SubscriptionWithPlan, grantStart: Date, expiresAt: Date, opts: Opts & { renewal?: boolean }) {
   const keys = keysForPlan(sub.plan);
   if (keys <= 0 || expiresAt <= (opts.now ?? new Date())) return null;
-  return grantPlanKeys(
-    sub.memberId,
-    keys,
-    expiresAt,
-    { reference: `sub:${sub.id}:${grantStart.toISOString()}`, note: `${sub.plan.name} keys` },
-    { db: opts.db, now: opts.now },
-  );
+  const reference = `sub:${sub.id}:${grantStart.toISOString()}`;
+  const row = await grantPlanKeys(sub.memberId, keys, expiresAt, { reference, note: `${sub.plan.name} keys` }, { db: opts.db, now: opts.now });
+  // "plan keys granted" (spec §16) — once per grant reference, never for the FREE tier's monthly trickle.
+  if (sub.plan.tier.code !== "FREE") {
+    const db = opts.db ?? defaultPrisma;
+    const member = await db.member.findUnique({ where: { id: sub.memberId }, select: { email: true, city: { select: { timezone: true } } } });
+    if (member) {
+      await notifyOnce(
+        { memberId: sub.memberId, kind: "plan_keys_granted", reference },
+        () => emailPlanKeysGranted({ to: member.email, keys, planName: sub.plan.name, expiresAt, timezone: member.city?.timezone ?? "Europe/Lisbon", renewal: opts.renewal ?? false }),
+        { db, now: opts.now },
+      );
+    }
+  }
+  return row;
 }
 
 /**
@@ -181,7 +191,7 @@ export async function applyPaidPeriod(input: PaidPeriodInput, opts: Opts = {}): 
       });
 
   await supersedeLocalSubscriptions(input.memberId, sub.id, { db, now });
-  await grantForSubPeriod(sub, input.periodStart, plan.period === "MONTHLY" ? input.periodEnd : expiresAt, { db, now });
+  await grantForSubPeriod(sub, input.periodStart, plan.period === "MONTHLY" ? input.periodEnd : expiresAt, { db, now, renewal: !!existing && existing.currentPeriodEnd <= input.periodStart });
   return sub;
 }
 
@@ -273,13 +283,20 @@ export async function startPromoPeriod(
   return sub;
 }
 
-export async function markPastDue(stripeSubscriptionId: string, opts: Opts = {}): Promise<boolean> {
+export async function markPastDue(stripeSubscriptionId: string, opts: Opts & { invoiceId?: string } = {}): Promise<boolean> {
   const db = opts.db ?? defaultPrisma;
   const res = await db.subscription.updateMany({
     where: { stripeSubscriptionId, status: "ACTIVE" },
     data: { status: "PAST_DUE" },
   });
-  return res.count > 0;
+  if (res.count === 0) return false;
+  // "failed payment" (spec §16), once per invoice.
+  const sub = await db.subscription.findUnique({ where: { stripeSubscriptionId }, include: { plan: true, member: { select: { email: true } } } });
+  if (sub) {
+    const { emailPaymentFailed } = await import("@/domain/notifications/emails");
+    await notifyOnce({ memberId: sub.memberId, kind: "payment_failed", reference: opts.invoiceId ?? `sub:${stripeSubscriptionId}:${sub.currentPeriodEnd.toISOString()}` }, () => emailPaymentFailed({ to: sub.member.email, planName: sub.plan.name }), { db, now: opts.now });
+  }
+  return true;
 }
 
 /**

@@ -148,7 +148,7 @@ async function handleInvoiceFailed(event: StripeWebhookEvent): Promise<string> {
   if (str(invoice.billing_reason) !== "subscription_cycle") return "ignored (not a renewal)";
   const stripeSubscriptionId = invoiceSubscriptionId(invoice);
   if (!stripeSubscriptionId) return "no subscription";
-  const changed = await markPastDue(stripeSubscriptionId);
+  const changed = await markPastDue(stripeSubscriptionId, { invoiceId: str(invoice.id) ?? undefined });
   return changed ? `subscription ${stripeSubscriptionId} PAST_DUE` : "no change";
 }
 

@@ -125,5 +125,16 @@ export async function completeOnboarding(
       ...(partnerToken ? { partnerClaimToken: partnerToken, partnerClaimTokenAt: now } : {}),
     },
   });
+  if (!member.onboardedAt) {
+    // "welcome" (spec §16), once.
+    const [{ getMembership }, { getBalance }, { emailWelcome }, { notifyOnce }] = await Promise.all([
+      import("@/domain/billing/subscriptions"),
+      import("@/domain/keys/ledger"),
+      import("@/domain/notifications/emails"),
+      import("@/domain/notifications/log"),
+    ]);
+    const [membership, balance] = await Promise.all([getMembership(memberId, { db, now }), getBalance(memberId, { db, now })]);
+    await notifyOnce({ memberId, kind: "welcome", reference: "welcome" }, () => emailWelcome({ to: member.email, name: input.name, keys: balance.total, tierName: membership.subscription?.plan.tier.name ?? "free" }), { db, now });
+  }
   return result;
 }

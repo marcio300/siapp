@@ -135,5 +135,10 @@ tests/             Vitest suite + global DB setup
   per *scanned* discounted ticket, hourly job `pnpm jobs:settle-events` emails the producer a statement
   with CSV), backoffice ledger with mark-paid / reopen / re-send / CSV, producer page section,
   dashboard tiles (open settlements, redemptions, no-show rate, fraud queue).
-- Next: **Phase 9 — notifications and jobs wiring**, see `docs/BUILD_PLAN.md`.
+- **Phase 9 — done**: every spec §16 email (welcome, keys granted / renewed, keys expiring, event
+  reminder with the cutoff, no-show, failed payment, tourist pass expiring) sent at most once via
+  `NotificationLog`; `GET /api/cron/[job]` behind `CRON_SECRET` over the job registry in
+  `src/lib/cron-jobs.ts`, all 12 jobs scheduled in `vercel.json`.
+- Next: **Phase 10 — polish, brand, PWA, legal, launch checklist**, see `docs/BUILD_PLAN.md`.
+- Decisions waiting on the owner: `docs/DECISIONS_PENDING.md`.
 - The human-readable record of every phase (decisions, deviations, gotchas) is `docs/BUILD_LOG.md`.
