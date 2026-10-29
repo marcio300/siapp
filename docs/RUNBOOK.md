@@ -44,8 +44,44 @@ adapter). Staff land in `/admin`, members in `/app`, doors in `/scan`.
    pnpm db:seed          # city, tiers, plans, packs, settings, the ADMIN from SEED_ADMIN_EMAIL
    pnpm stripe:sync-prices   # creates Stripe Products/Prices and stores the ids (also: /admin/plans → Sync)
    ```
-4. Every later schema change: push the migration, run `pnpm db:deploy` against production before or
-   with the deploy. Migrations are additive; never edit an applied one.
+4. Every later schema change: push the migration. `vercel.json` sets `buildCommand` to
+   `pnpm db:deploy && pnpm build`, so every Vercel build (preview and production) applies pending
+   migrations against its `DATABASE_URL` before compiling. Migrations are additive; never edit an
+   applied one. Running `pnpm db:deploy` by hand from a machine with the production URL is still fine
+   (idempotent).
+
+### Current deployment (2026-10-29)
+
+- **Vercel**: project `siapp` (id `prj_oJii6I9zA6FXH9VXDxuEP6zEPxiz`, team `marcio-3161s-projects`, Pro),
+  git-connected to `github.com/marcio300/siapp` (production branch `main` → auto-deploys on push;
+  the first production deploy was created from the build branch by API), Node 22, region `fra1`,
+  deployment protection = previews only (production is public). Production URL:
+  `https://siapp-two.vercel.app` (`AUTH_URL`/`APP_URL` point there until a custom domain lands).
+- **Database**: the Neon org is managed by the Vercel marketplace, so a new Neon *project* needs the
+  owner to approve the billing step in Vercel → Storage → Create → Neon. Until then SIAPP runs in a
+  separate database `siapp` (own schema, own data) inside the existing EU project `eventos-db-eu`
+  (`hidden-fog-56235864`, `eu-central-1`, PG 18, branch `main`, same `neondb_owner` role). It shares
+  that project's compute/branch with EventOS — move to a dedicated project before scale, and never
+  reset the branch. `DATABASE_URL` is the pooled URL (`…-pooler…/siapp`) on production + preview.
+- **Env set on Vercel** (production + preview unless noted): `DATABASE_URL`, `AUTH_SECRET`,
+  `DATA_ENCRYPTION_KEY`, `CRON_SECRET` (production), `EMAIL_API_KEY` (Resend key `siapp-production`),
+  `EMAIL_PROVIDER=resend`, `EMAIL_FROM="SIAPP <siapp@updates.erasmuslifelisboa.com>"` (the
+  Resend-verified EventOS domain — swap for a siapp.club sender once that domain is verified),
+  `AUTH_URL`/`APP_URL`, `SEED_ADMIN_EMAIL=marcio@erasmuslifelisboa.com`, `SEED_ADMIN_NAME`,
+  `BLOB_READ_WRITE_TOKEN` (Vercel Blob store `siapp-media`, fra1, connected to the project).
+  Secrets were generated at deploy time and live only in Vercel (not in the repo).
+- **NOT set yet — owner**: `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` (no Stripe account was
+  reachable from the deploy session). Sign-in, onboarding, discovery and free redemptions work without
+  them; every checkout and the webhook route fail until they exist. After adding them: register the
+  webhook endpoint (see Stripe below) and run `pnpm stripe:sync-prices` (or `/admin/plans` → Sync).
+- **Seed**: ran once during the first build (`pnpm db:seed`, create-only upserts) — Lisbon, tiers, plans,
+  packs, settings, ADMIN staff + member `marcio@erasmuslifelisboa.com`. Re-run any time; it never
+  overwrites edited values.
+- **Cloud-session gotcha**: the Claude Code sandbox proxy only relays plain HTTPS (no WebSocket
+  upgrade, credentials in headers stripped, no port 5432), so neither `pg`, Neon's serverless driver
+  nor its SQL-over-HTTP endpoint can reach the database from there — that is why migrations run in
+  the Vercel build. Seeding from a sandbox = temporarily put `&& pnpm db:generate && pnpm db:seed` in
+  the project's build command (Vercel dashboard / API), deploy, then remove it.
 
 ### Stripe
 

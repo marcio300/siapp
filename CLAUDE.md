@@ -345,6 +345,15 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   signed synthetic Stripe webhooks → redeem → scan → cancel in/out of window). `docs/RUNBOOK.md`. Tests
   `tests/deletion.test.ts` (1 → suite 115) + e2e 4. ALL 10 PHASES DONE — next: owner decisions
   (`docs/DECISIONS_PENDING.md`), launch checklist in `docs/BUILD_PLAN.md`.
+- **Done — DEPLOYED (2026-10-29)**: production `https://siapp-two.vercel.app` — Vercel project `siapp`
+  (team `marcio-3161s-projects`, Pro, `fra1`, Node 22, git-connected to `marcio300/siapp`, production
+  branch `main`; first deploy created by API from the build branch), DB = separate database `siapp` in
+  the existing Neon EU project `eventos-db-eu` (`hidden-fog-56235864`; a dedicated Neon project needs
+  the owner to approve marketplace billing), Vercel Blob `siapp-media`, Resend key + EventOS's
+  verified sender domain, generated `AUTH_SECRET`/`DATA_ENCRYPTION_KEY`/`CRON_SECRET`; migrations run
+  in the Vercel build (`vercel.json` `buildCommand: pnpm db:deploy && pnpm build`), seed ran in the
+  first build. STRIPE keys NOT set (owner). Full state + the sandbox-can't-reach-Neon gotcha in
+  `docs/RUNBOOK.md` §3 "Current deployment".
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

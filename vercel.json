@@ -1,5 +1,6 @@
 {
   "regions": ["fra1"],
+  "buildCommand": "pnpm db:deploy && pnpm build",
   "crons": [
     { "path": "/api/cron/monthly-grants", "schedule": "10 3 * * *" },
     { "path": "/api/cron/expire-periods", "schedule": "5 * * * *" },
