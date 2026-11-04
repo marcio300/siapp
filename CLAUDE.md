@@ -10,6 +10,7 @@ Read these before touching anything:
 - `docs/DATA_MODEL.md` — entities, ledger design and invariants. `prisma/schema.prisma` is the draft.
 - `docs/BUILD_PLAN.md` — phased plan with acceptance criteria. Work phase by phase, in order.
 - `docs/BRAND.md` — colours, type and UI vocabulary.
+- `docs/EVENTOS_INTEGRATION.md` — SIAPP as a sales channel of EventOS (draft; owner decisions pending).
 
 ## Stack (mirror EventOS exactly)
 
