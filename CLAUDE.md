@@ -62,16 +62,19 @@ familiar.
    allow a partial refund row later. Don't design cancellation as boolean.
 5. **Referral bonus (10 keys each) vests only after** the invitee's first paid period is past the Stripe
    refund window **and** the invitee has at least one scanned ticket. Never pay out at checkout.
-6. **Discounts are a simple percentage off face value.** We collect the money; the producer is settled
-   `face × (1 − discount%)` per **scanned** ticket, not per redeemed ticket.
+6. **Discounts are a simple percentage off face value (10–99 %).** For hand-managed producers we
+   collect the money and settle `face × (1 − discount%)` per **scanned** ticket, not per redeemed
+   ticket. For producers on EventOS the member pays the producer through EventOS checkout
+   (`Offer.paymentMode = PRODUCER_COLLECTS`) and nothing is settled — see `docs/EVENTOS_INTEGRATION.md`.
 7. **One account per email, email verification required, disposable domains blocked, age ≥ 24 attested
    at signup.** Selfie is mandatory before the first redemption and is shown on every scanned ticket.
 8. **+1 guests have no account.** They are a name on the member's ticket, scanned together. Whether +1
    is allowed and what it costs is per offer.
 9. **Multi-city from day one.** Every event, producer, plan price and member home base carries `cityId`.
    Lisbon is the only seeded city. No city-specific logic in code.
-10. **Producers have no portal.** They get a scanner login per event and a settlement email. Do not
-    build producer self-service; it will come from the future EventOS clone.
+10. **Producers have no SIAPP portal.** Hand-managed producers get a scanner login per event and a
+    settlement email. Producers on EventOS manage their SIAPP presence from EventOS (the SIAPP tab) and
+    scan with the EventOS scanner — that is the portal; never build producer self-service in SIAPP.
 11. **All money in integer cents, all times in UTC, display in `Europe/Lisbon`** (city timezone field).
 12. Webhooks (Stripe) are idempotent: store the event id, skip duplicates, never trust the client for
     payment state.

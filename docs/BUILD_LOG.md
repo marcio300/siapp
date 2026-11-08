@@ -618,3 +618,36 @@ Legend: **Shipped** — what exists now · **Decisions** — calls made that are
 - Legal copy is a draft: company details, addresses and the withdrawal form need the real entity.
 - Push notifications, `pt` messages, Apple/Google Wallet passes: later.
 - The e2e suite shares `.next` with `pnpm dev` — don't run both at once.
+
+---
+
+## EventOS integration — decisions (2026-11-08)
+
+Architecture in the EventOS repo, `docs/SIAPP_Channel_Architecture.md`; SIAPP-side summary in
+`docs/EVENTOS_INTEGRATION.md`. Nothing built yet. Owner decisions:
+
+**Decisions**
+
+- **SIAPP is a sales channel of EventOS.** A producer on EventOS switches SIAPP on per event from a
+  SIAPP tab and configures, per ticket type, Full redemption / Discount / Guest list with caps. EventOS
+  is the producer portal the spec parked; SIAPP keeps members, keys, eligibility, redemptions, fraud.
+- **Money (A):** for EventOS producers the member pays the **producer** through EventOS checkout on the
+  producer's own gateway (held order + signed pay link); no settlement. Hand-managed producers keep
+  today's flow (we collect, we settle per scanned ticket). Spec §5/§6/§12 + `CLAUDE.md` rules 6/10
+  amended.
+- **Commission (B):** none at launch; field reserved for a later producer → SIAPP settlement.
+- **Member data to the producer (C):** free/guest-list tickets = display name only (placeholder
+  email); paid tickets = name + email (the member is the buyer on a certified invoice). Terms to say so.
+- **Key pricing (D):** SIAPP-owned rule, **€1 per key** (`key_value_cents` 100), `min_key_cost` 2,
+  `guestlist_key_cost` 10. `keyCost = max(min, ceil(value / key_value))`, value = face or face × d %.
+  Producers cannot change it (band 0); staff can override one offer in the backoffice.
+- **Discount (E):** 10 % minimum, 99 % maximum; full price impossible by construction.
+- **Door (F):** the producer's **EventOS scanner scans SIAPP tickets** (mirror ticket shares the QR
+  payload) and reports the check-in back; the SIAPP scanner stays valid for every event as fallback.
+- **Guest list (G):** needs a hidden €0 ticket type on the EventOS side (one-click create).
+- **Connection (H):** staff-generated EventOS API key per producer at launch; self-serve later.
+
+**Open**
+
+- Exact JSON contract (`EventOS docs/SIAPP_API.md`), then build phases 1–5 in both repos.
+- SIAPP terms update for decision C.

@@ -22,7 +22,6 @@ the question is whether the assumption is the one you want. Discuss, decide, the
 | 14 | 0 | **Key pack 50 keys priced at €20** (spec said €18, which broke the spec's own "never cheaper per key than REGULAR" rule). | €20 (test enforces the rule). | Change the rule or the price. |
 | 15 | 10 | **Apple / Google Wallet passes** — EventOS has nothing to port. | Not built. | Build with PassKit / Google Wallet API in Phase 10. |
 | 16 | 8 | **Producers without a contact email** settle silently (no statement sent). | Ledger shows "no contact email". | Block publishing events for producers without an email. |
-| 17 | — | **EventOS as the producer portal / SIAPP as a sales channel** — see `docs/EVENTOS_INTEGRATION.md` and EventOS `docs/SIAPP_Channel_Architecture.md` §13 (money model, commission, member data shared, pricing rule, scanner, guest-list type, key handover). | Nothing built; `Producer.usesEventOS` is a label only. | Decide §13 A–H, then build phases 1–5. |
 
 Also waiting on you (not design questions): live Stripe keys + `stripe listen` test, Vercel + Neon
 deployment, Resend domain, `DATA_ENCRYPTION_KEY` for production, the EventOS issuing side of partner

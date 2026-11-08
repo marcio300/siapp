@@ -77,7 +77,13 @@ create and manage producers and their events. Producers receive:
 - a **settlement report by email** after each event with discounted-ticket revenue collected.
 
 Producer record also stores: contact, IBAN/payout details (for settlements), default discount terms,
-whether they use EventOS (future: direct integration).
+whether they use EventOS.
+
+**Producers on EventOS (decided 2026-11-08, see `docs/EVENTOS_INTEGRATION.md`).** A producer who runs
+their own EventOS manages SIAPP from a SIAPP tab there: which events show on SIAPP and, per ticket
+type, full redemption / discount (≥ 10 %) / guest list with caps. Their events are read-only in our
+backoffice. They have no SIAPP login; EventOS *is* their portal. Their EventOS scanner scans SIAPP
+tickets (the ticket is mirrored into EventOS with the same QR) and our scanner stays available.
 
 ## 6. Events and offers
 
@@ -88,8 +94,10 @@ An **offer** is what a member can redeem. Fields:
 
 - `type`: `FREE_TICKET`, `DISCOUNT_TICKET`, `GUESTLIST`
 - `keyCost` (integer keys)
-- `faceValueCents` and `discountPercent` (DISCOUNT_TICKET only; member pays `face × (1 − d%)` in cash
-  **to us**, we settle with the producer)
+- `faceValueCents` and `discountPercent` (DISCOUNT_TICKET only; `10 ≤ d ≤ 99`; member pays
+  `face × (1 − d%)` in cash — **to us** for hand-managed producers (we settle with the producer), **to
+  the producer** through EventOS checkout for EventOS producers (`paymentMode = PRODUCER_COLLECTS`,
+  nothing to settle)
 - `allocationType`: `CAPPED` (with `capacity`) or `TIME_WINDOW` (with `validUntil` time, e.g. 02:00;
   guest-list style, unlimited count)
 - `afterWindowBehaviour` (TIME_WINDOW only): `REFUSE` or `PAY_DOOR` (scanner shows "window closed,
@@ -179,10 +187,15 @@ future partner community; partner keys and promo rules are configured in backoff
 
 ## 12. Settlement
 
-For DISCOUNT_TICKET offers we collect the member's cash. After each event ends, a job computes per
-producer per event: `scanned discounted tickets × face × (1 − discount%)` = amount owed. Backoffice
-shows a settlement ledger per producer (open, paid, with payment reference); staff marks paid. Producer
-receives an email with the statement (CSV attached). FREE_TICKET and GUESTLIST offers settle nothing.
+For DISCOUNT_TICKET offers of **hand-managed producers** we collect the member's cash. After each
+event ends, a job computes per producer per event: `scanned discounted tickets × face × (1 −
+discount%)` = amount owed. Backoffice shows a settlement ledger per producer (open, paid, with payment
+reference); staff marks paid. Producer receives an email with the statement (CSV attached).
+FREE_TICKET and GUESTLIST offers settle nothing.
+
+**EventOS producers** collect discounted-ticket money themselves through EventOS checkout (their own
+Stripe/Barion, their own certified invoice), so there is nothing to settle; the job skips offers with
+`paymentMode = PRODUCER_COLLECTS`. No commission is charged at launch (decided 2026-11-08).
 
 ## 13. Backoffice (staff)
 

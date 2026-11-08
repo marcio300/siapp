@@ -1,8 +1,9 @@
 # EventOS integration — SIAPP side
 
-Status: **draft for owner review** (2026-11-04). The full architecture note lives in the EventOS repo
-at `docs/SIAPP_Channel_Architecture.md` (read it first; this file only lists what SIAPP has to provide
-and what changes here). Nothing is built yet; decisions are in that note's §13.
+Status: **decided** (drafted 2026-11-04, all owner decisions taken 2026-11-08). The full architecture
+note lives in the EventOS repo at `docs/SIAPP_Channel_Architecture.md` (read it first; this file only
+lists what SIAPP has to provide and what changes here). Nothing is built yet; the decisions are in that
+note's §13 and summarised in `docs/BUILD_LOG.md` ("EventOS integration — decisions").
 
 ## The idea in one paragraph
 
@@ -21,9 +22,11 @@ SIAPP about the check-in; the SIAPP scanner keeps working too.
 2. **Partner API** `/api/partner/v1/*` (bearer key): `connect`, `pricing`, `events/{id}` upsert +
    `publish|pause|cancel`, `events/{id}/sales`, `events/{id}/settlement`, `redemptions/{id}/checkin`,
    `redemptions/{id}/payment`, signed `tickets/{id}/photo`. All validation of offers lives here.
-3. **Pricing rule** in `Setting`: `key_value_cents`, `min_key_cost`, `guestlist_key_cost`,
-   `key_cost_override_pct`, `min_discount_percent` (10). `keyCost = max(min, ceil(value / key_value))`
-   where value = face (full) or face × d % (discount). Producers never set key costs freely.
+3. **Pricing rule** in `Setting`: `key_value_cents` = **100** (€1 per key, owner 2026-11-08),
+   `min_key_cost` 2, `guestlist_key_cost` 10, `key_cost_override_pct` 0, `min_discount_percent` 10.
+   `keyCost = max(min_key_cost, ceil(value / key_value_cents))` where value = face (full) or
+   face × d % (discount). Producers never set key costs; SIAPP staff may override one offer in the
+   backoffice.
 4. **Event/offer model additions.** `Event.source MANUAL|EVENTOS`, `Event.externalId`,
    `Event.snapshotVersion`; `Offer.externalRef` ("{eventId}:{ticketTypeId}:{mode}"),
    `Offer.paymentMode SIAPP_COLLECTS|PRODUCER_COLLECTS`; EventOS-sourced events read-only in the
@@ -38,8 +41,9 @@ SIAPP about the check-in; the SIAPP scanner keeps working too.
 7. **Scanner / attendance.** `recordExternalCheckIn(redemptionId, at, gate)` = the OK branch of
    `processScan` (idempotent); `markNoShows` waits `eventos_noshow_grace_hours` (6) for EventOS
    events and a late check-in reverses NO_SHOW for 48 h (also closes `DECISIONS_PENDING` #2).
-8. **Spec amendments** once decision A is taken: `PRODUCT_SPEC.md` §5, §6, §12 and `CLAUDE.md`
-   rules 6 and 10 (the spec wins over code — amend first).
+8. **Spec amendments** (done 2026-11-08 with decision A): `PRODUCT_SPEC.md` §5, §6, §12 and
+   `CLAUDE.md` rules 6 and 10 now distinguish hand-managed producers (we collect, we settle) from
+   EventOS producers (they collect through EventOS checkout, nothing to settle).
 
 ## What does not change
 
