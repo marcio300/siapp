@@ -1,6 +1,7 @@
 # EventOS integration — SIAPP side
 
-Status: **decided** (drafted 2026-11-04, all owner decisions taken 2026-11-08). The full architecture
+Status: **decided** (drafted 2026-11-04, all owner decisions taken 2026-11-08; contract written the same day
+— EventOS `docs/SIAPP_API.md`; SIAPP build phases 11–13 in `docs/BUILD_PLAN.md`). The full architecture
 note lives in the EventOS repo at `docs/SIAPP_Channel_Architecture.md` (read it first; this file only
 lists what SIAPP has to provide and what changes here). Nothing is built yet; the decisions are in that
 note's §13 and summarised in `docs/BUILD_LOG.md` ("EventOS integration — decisions").

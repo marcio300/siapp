@@ -238,6 +238,104 @@ automatically.
 
 ---
 
+## Phase 11 — EventOS partner API (producer connection, events, pricing)
+
+**Prompt:**
+
+> Phase 11. Read `docs/EVENTOS_INTEGRATION.md` and the contract in the EventOS repo
+> `docs/SIAPP_API.md` (§1–3, §6). Schema: `ProducerApiKey` (producerId, prefix, keyHash sha256,
+> createdById, createdAt, revokedAt, lastUsedAt; one active per producer), `Producer.eventosOrgId
+> String? @unique`, `Producer.eventosWebhookUrl`, `Producer.eventosWebhookSecretHash` + previous +
+> previousUntil, `Event.source MANUAL|EVENTOS` (default MANUAL), `Event.externalId` (unique per
+> producer), `Event.snapshotVersion Int`, `Event.pausedAt`, `Offer.externalRef` (unique per event),
+> `Offer.paymentMode SIAPP_COLLECTS|PRODUCER_COLLECTS` (default SIAPP_COLLECTS), `Offer.keyCostOverride
+> Int?`, `PartnerIdempotency` (producerId, key, requestHash, response Json, createdAt; unique
+> producer+key). Settings seeded: `key_value_cents` 100, `min_key_cost` 2, `guestlist_key_cost` 10,
+> `key_cost_override_pct` 0, `min_discount_percent` 10, `max_discount_percent` 99,
+> `partner_payment_hold_minutes` 15, `eventos_noshow_grace_hours` 6, `partner_photo_ttl_hours` 24,
+> `partner_max_offers_per_event` 10. Domain `src/domain/partners-api/`: `keys.ts` (generate
+> `siapp_pk_<8>_<32>`, hash, verify, revoke), `auth.ts` (`requireProducerKey(req)` → producer, stamps
+> lastUsedAt, 401 codes), `idempotency.ts` (store/replay/mismatch 422), `pricing.ts` (pure contract
+> §2.1 — the ONLY place key costs are computed; `keyCostOverride` wins), `snapshot.ts` (zod for
+> `EventSnapshot`/`OfferSpec` exactly as contract §2.2/2.3 incl. 10–99 %, caps, frozen fields, deletion
+> rule; `applySnapshot(producer, eventosEventId, snapshot)` = ONE tx: version guard 409, event upsert
+> (cityId from producer, scanner creds minted on create via existing `createEvent` internals), offers
+> upsert by `externalRef` → `OfferResult[]`), `status.ts` (publish via `setEventStatus`, pause =
+> `pausedAt`, cancel = `refundEventRedemptions` keys-only for PRODUCER_COLLECTS), `sales.ts`
+> (`RedemptionView[]` with `since`/cursor; `member.email` only when `cashCents > 0`), `errors.ts`.
+> Routes `src/app/api/partner/v1/…`: connect, pricing, events/[id] PUT, events/[id]/{publish,pause,
+> cancel}, events/[id]/sales, events/[id]/settlement (404 `no_settlement` for PRODUCER_COLLECTS),
+> tickets/[id]/photo (query-signed, no-store). Rate limit 120/min per key (in-memory + `Setting`
+> override). Eligibility/discovery: `pausedAt` hides the event from `/app` listings and refuses new
+> redemptions (`RefusalReason` `event_paused`). Backoffice: producer page "EventOS connection" card
+> (ADMIN: generate key → shown once, revoke, bound org, webhook URL); events with `source = EVENTOS`
+> read-only ("Managed in EventOS by {producer}") except fraud/review, emergency cancel and the staff
+> key-cost override. Tests `tests/partners-api.test.ts`: key verify/revoke, pricing table (€15 → 15,
+> 40 % of €20 → 8, floor 2, guest list 10, override), snapshot validation codes, version guard,
+> frozen-after-redemption, deletion-with-redemptions refused, publish/pause/cancel, sales filter +
+> email rule, idempotency replay/mismatch, photo signature. Commit.
+
+---
+
+## Phase 12 — Outbound events, mirror tickets, external check-ins
+
+**Prompt:**
+
+> Phase 12. Contract §4.1, §4.3, §4.4, §4.5, §4.6, §3.7, §1.2. Schema: `OutboundEvent` (producerId,
+> type, payload Json, status PENDING|SENT|FAILED, attempts, nextAttemptAt, lastError, sentAt;
+> id = ULID used as the envelope id), `Ticket.externalTicketId`, `Ticket.externalOrderId`,
+> `Scan.source` (SIAPP|EVENTOS) + `Scan.externalId` unique (eventosCheckInId). `src/domain/partners-api/
+> outbox.ts`: `queueOutbound(producer, type, data)` + `flushOutbound()` (signs `t.body` HMAC with the
+> producer's secret, POSTs to `eventosWebhookUrl`, backoff 1 m/5 m/15 m/1 h/6 h, 4xx ≠ 408/429 terminal,
+> stores the response). Hooks: redemption → ACTIVE on a FULL/GUESTLIST offer of an EventOS event
+> (redeem, releaseHeldRedemption, waitlist claim) → `redemption.activated` with a signed photo URL (ttl
+> `partner_photo_ttl_hours` after endsAt) → on 200 store `externalTicketId/externalOrderId`;
+> `cancelRedemption`/`denyHeldRedemption`/`refundEventRedemptions`/`expirePendingPayments` →
+> `redemption.cancelled` with reason + `refundCash`; SIAPP scanner OK on an EventOS event →
+> `ticket.checked_in`; every counter change → `sales.updated` coalesced 30 s per event; key revoked →
+> `producer.disconnected`. Inbound `POST /redemptions/{id}/checkin` (`recordExternalCheckIn`: the OK
+> branch of `processScan` as a conditional update, Scan row `source = EVENTOS`, `scannedBy =
+> "eventos:{gate}"`, idempotent by `eventosCheckInId`, NO_SHOW → CHECKED_IN reversal within 48 h of
+> endsAt with `noShows--`/`shows++`). `markNoShows`: EventOS events wait `eventos_noshow_grace_hours`.
+> Member ticket page: "preparing for the door" until `externalTicketId` is set (FULL/GUESTLIST on
+> EventOS events). Backoffice: event page shows outbound log (last 50) + failed rows with retry;
+> scanner credentials card collapsed for EventOS events. Cron `pnpm jobs:partner-outbox` every minute
+> via `CRON_JOBS`. Tests `tests/partners-outbound.test.ts`: activation payload + signature verifies
+> with the test vector, retry/backoff/terminal, external check-in OK → ALREADY_SCANNED, no-show
+> reversal window, cancellation reasons, coalesced sales.updated, disconnected on revoke. Commit.
+
+---
+
+## Phase 13 — Producer-collects payments
+
+**Prompt:**
+
+> Phase 13. Contract §4.2, §3.8, §5. For DISCOUNT_TICKET offers with `paymentMode =
+> PRODUCER_COLLECTS`: `redeem()` still creates `PENDING_PAYMENT` with keys spent and the QR payload
+> minted up front (`Ticket` row is NOT created yet — store `Redemption.qrPayload` new column);
+> `startRedemptionPayment` becomes a dispatcher: SIAPP_COLLECTS → Stripe Checkout (unchanged),
+> PRODUCER_COLLECTS → synchronous `order.create` to EventOS (signed, idempotent by redemption id,
+> `holdMinutes` = `partner_payment_hold_minutes`, buyer = member name + email, +1 cash line) → store
+> `Redemption.externalOrderId`/`externalPayUrl`, `paymentExpiresAt` = returned hold expiry → redirect
+> the member to `payUrl`; `409 price_mismatch|sold_out|event_not_live` → cancel the redemption, keys
+> back, friendly `?error=`. Inbound `POST /redemptions/{id}/payment`: `order.paid` → `completeExternalPayment`
+> (PENDING_PAYMENT → ACTIVE conditional update, create `Ticket` with `qrPayload` = stored payload,
+> `409 qr_mismatch` when the message's `ticket.qrToken` differs, `externalTicketId`, confirmation
+> email, waitlist CLAIMED), `order.expired` → `expirePendingPayments` path for that one redemption,
+> `refund.succeeded` → `Redemption.externalRefundedAt`, `refund.failed` → `externalRefundError` +
+> OPEN note on the member page. `cancelRedemption` on a PRODUCER_COLLECTS redemption refunds keys and
+> queues `redemption.cancelled refundCash = true` (no Stripe call). Settlement job skips
+> PRODUCER_COLLECTS offers; `/admin/settlements` shows "collected by producer" where relevant. Member
+> app: redeem sheet copy for producer-collects offers ("You pay {producer} on the next screen"; the MoR
+> note names the producer, not us); ticket page "Pay now" uses `externalPayUrl`. Spec check: rules 6 and
+> 10 in CLAUDE.md already describe this — code must match them. Tests `tests/partners-payments.test.ts`:
+> dispatcher, order.create payload + idempotency, price_mismatch → keys back, order.paid → ACTIVE +
+> ticket with the pre-minted payload, qr_mismatch 409, order.expired → EXPIRED + keys, cancel → keys +
+> cancelled message, settlement skip, SIAPP_COLLECTS path untouched (existing redemption tests still
+> green). Update CLAUDE.md build progress + `docs/BUILD_LOG.md`. Commit.
+
+---
+
 ## Launch checklist (humans, not Claude Code)
 
 - Final tier prices, key amounts, pack prices → DB + `sync-stripe-prices`
