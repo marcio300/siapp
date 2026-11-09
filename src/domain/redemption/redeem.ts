@@ -8,6 +8,7 @@ import { COUNTING, cancellationWindowHours, checkEligibility, reservedSeats } fr
 import { RedemptionError } from "./errors";
 import { emailRedemptionConfirmed } from "./notify";
 import { issueTicket } from "./tickets";
+import { notifyRedemptionActivated, notifySalesUpdated } from "@/domain/partners-api/hooks";
 
 /**
  * redeem(memberId, offerId, { plusOneName }) — spec §7, CLAUDE.md rule 3.
@@ -123,6 +124,9 @@ export async function redeem(
           redemptionId: result.redemption.id,
           cancelDeadlineAt: result.redemption.cancelDeadlineAt,
         });
+        await notifyRedemptionActivated(result.redemption.id, { db, now });
+      } else {
+        await notifySalesUpdated(result.offer.eventId, { db, now });
       }
       return {
         redemptionId: result.redemption.id,

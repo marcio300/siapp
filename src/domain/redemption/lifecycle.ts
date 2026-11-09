@@ -9,6 +9,7 @@ import { emailNoShow } from "@/domain/notifications/emails";
 import { notifyOnce } from "@/domain/notifications/log";
 import { emailRedemptionCancelled, emailRedemptionConfirmed, emailWaitlistSpot } from "./notify";
 import { issueTicket } from "./tickets";
+import { notifyRedemptionActivated, notifyRedemptionCancelled, notifySalesUpdated } from "@/domain/partners-api/hooks";
 
 /**
  * Everything that moves a redemption after creation: payment (Stripe
@@ -84,11 +85,13 @@ export async function releaseHeldRedemption(redemptionId: string, opts: Opts = {
     // Give the member a real chance to pay after a human review: at least 24 h.
     const paymentExpiresAt = new Date(now.getTime() + Math.max(minutes, 24 * 60) * 60_000);
     await db.redemption.update({ where: { id: r.id }, data: { status: "PENDING_PAYMENT", paymentExpiresAt } });
+    await notifySalesUpdated(r.eventId, { db, now });
     return "pending_payment";
   }
   await db.redemption.update({ where: { id: r.id }, data: { status: "ACTIVE" } });
   await issueTicket(db, { redemptionId: r.id, memberName: r.member.name ?? r.member.email, photoSnapshotUrl: r.member.selfieUrl, plusOneName: r.plusOneName });
   await emailRedemptionConfirmed({ to: r.member.email, eventTitle: r.offer.event.title, startsAt: r.offer.event.startsAt, timezone: r.offer.event.city.timezone, offerName: r.offer.name, keyCost: r.keyCost, cashCents: 0, plusOneName: r.plusOneName, redemptionId: r.id, cancelDeadlineAt: r.cancelDeadlineAt });
+  await notifyRedemptionActivated(r.id, { db, now });
   return "active";
 }
 
@@ -101,6 +104,7 @@ export async function denyHeldRedemption(redemptionId: string, opts: Opts = {}):
   await refundKeys(redemptionId, { note: "fraud review denied" }, { db, now }).catch(() => undefined);
   const r = await db.redemption.findUniqueOrThrow({ where: { id: redemptionId } });
   await notifyNextOnWaitlist(r.offerId, { db, now });
+  await notifyRedemptionCancelled(r.id, "denied", { wasActive: false, cashCents: r.cashCents }, { db, now });
   return true;
 }
 
@@ -130,6 +134,7 @@ export async function cancelRedemption(redemptionId: string, memberId: string | 
   }
   await notifyNextOnWaitlist(r.offerId, { db, now });
   await emailRedemptionCancelled({ to: r.member.email, eventTitle: r.event.title, keysRefunded: refund.fromPlan + refund.fromPurchased, cashCents: cashRefundedCents });
+  await notifyRedemptionCancelled(r.id, memberId ? "member" : "staff", { wasActive: r.status === "ACTIVE", cashCents: r.cashCents }, { db, now });
   return { keysRefunded: refund.fromPlan + refund.fromPurchased, cashRefundedCents };
 }
 
@@ -144,6 +149,7 @@ export async function expirePendingPayments(opts: Opts = {}): Promise<{ expired:
     if (res.count === 0) continue;
     if (r.keyCost > 0) await refundKeys(r.id, { note: "payment window expired" }, { db, now });
     await notifyNextOnWaitlist(r.offerId, { db, now });
+    await notifyRedemptionCancelled(r.id, "expired", { wasActive: false, cashCents: r.cashCents }, { db, now });
     expired++;
   }
   return { expired };
@@ -156,7 +162,10 @@ export async function expirePendingPayments(opts: Opts = {}): Promise<{ expired:
 export async function markNoShows(opts: Opts = {}): Promise<{ noShows: number; finishedEvents: number }> {
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
-  const events = await db.event.findMany({ where: { status: "PUBLISHED", endsAt: { lte: now } }, select: { id: true } });
+  // EventOS events wait for the producer's offline scanners to sync their last check-ins.
+  const graceHours = await getSetting("eventos_noshow_grace_hours", db);
+  const ended = await db.event.findMany({ where: { status: "PUBLISHED", endsAt: { lte: now } }, select: { id: true, source: true, endsAt: true } });
+  const events = ended.filter((e) => e.source !== "EVENTOS" || e.endsAt.getTime() + graceHours * 3_600_000 <= now.getTime());
   let noShows = 0;
   for (const e of events) {
     const active = await db.redemption.findMany({ where: { eventId: e.id, status: "ACTIVE" }, include: { member: { select: { email: true } }, event: { select: { title: true } } } });
@@ -171,6 +180,7 @@ export async function markNoShows(opts: Opts = {}): Promise<{ noShows: number; f
     await db.redemption.updateMany({ where: { eventId: e.id, status: "PENDING_PAYMENT" }, data: { status: "EXPIRED" } });
     await db.waitlistEntry.updateMany({ where: { offer: { eventId: e.id }, status: { in: ["WAITING", "NOTIFIED"] } }, data: { status: "EXPIRED" } });
     await db.event.update({ where: { id: e.id }, data: { status: "FINISHED" } });
+    if (e.source === "EVENTOS") await notifySalesUpdated(e.id, { db, now });
   }
   return { noShows, finishedEvents: events.length };
 }
@@ -192,6 +202,7 @@ export async function refundEventRedemptions(eventId: string, opts: Opts = {}): 
       cash = r.cashCents;
     }
     await emailRedemptionCancelled({ to: r.member.email, eventTitle: r.event.title, keysRefunded: r.keyCost, cashCents: cash });
+    await notifyRedemptionCancelled(r.id, "event_cancelled", { wasActive: r.status === "ACTIVE", cashCents: r.cashCents }, { db, now });
     refunded++;
   }
   await db.waitlistEntry.updateMany({ where: { offer: { eventId }, status: { in: ["WAITING", "NOTIFIED"] } }, data: { status: "EXPIRED" } });

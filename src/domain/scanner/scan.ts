@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient, RedemptionStatus, ScanResult } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
 import { verifyQrSignature } from "@/domain/redemption/tickets";
+import { notifyTicketCheckedIn } from "@/domain/partners-api/hooks";
 
 /** What the door sees after a scan — the photo is deliberately first-class (spec §14). */
 export interface TicketCard {
@@ -81,7 +82,7 @@ export async function processScan(input: ScanInput, opts: Opts = {}): Promise<Sc
           redemption: {
             include: {
               offer: true,
-              event: { select: { id: true, title: true, startsAt: true } },
+              event: { select: { id: true, title: true, startsAt: true, source: true } },
               member: { select: { selfieUrl: true } },
             },
           },
@@ -145,7 +146,7 @@ export async function processScan(input: ScanInput, opts: Opts = {}): Promise<Sc
   const earliest = r.event.startsAt.getTime() - 24 * 3_600_000;
   const at = input.at && input.at.getTime() >= earliest && input.at.getTime() <= now.getTime() ? input.at : now;
 
-  return db.$transaction(async (tx) => {
+  const outcome = await db.$transaction(async (tx) => {
     const flipped = await tx.redemption.updateMany({ where: { id: r.id, status: "ACTIVE" }, data: { status: "CHECKED_IN", checkedInAt: at } });
     if (flipped.count === 0) {
       const fresh = await tx.redemption.findUniqueOrThrow({ where: { id: r.id }, select: { status: true, checkedInAt: true, updatedAt: true } });
@@ -164,4 +165,9 @@ export async function processScan(input: ScanInput, opts: Opts = {}): Promise<Sc
       checkedInAt: at.toISOString(),
     };
   });
+  // The producer's EventOS learns about our door's admissions (contract §4.4).
+  if (outcome.result === "OK" && r.event.source === "EVENTOS") {
+    await notifyTicketCheckedIn({ redemptionId: r.id, qrPayload: ticket.qrPayload, at, gate: scannedBy, scanId: outcome.scanId }, { db, now });
+  }
+  return outcome;
 }
