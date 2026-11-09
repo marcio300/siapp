@@ -16,6 +16,7 @@ export default function PrivacyPage() {
           <tr><td>Payments</td><td>Handled by Stripe; we store a card fingerprint, never the number</td><td>Contract; legitimate interest (fraud)</td><td>Accounting retention (10 years, PT)</td></tr>
           <tr><td>Device fingerprint</td><td>Detecting accounts that share one device</td><td>Legitimate interest (fraud prevention)</td><td>Account lifetime</td></tr>
           <tr><td>Redemptions, scans, attendance</td><td>Running the door and the key ledger; settling with producers</td><td>Contract</td><td>Accounting retention</td></tr>
+          <tr><td>Pre-registration (founder list): email, first name, city, how you found the page</td><td>Inviting you when we open and honouring the founder deal</td><td>Consent (withdraw with the unsubscribe link)</td><td>Until you unsubscribe or create your account; unconverted leads deleted 12 months after launch</td></tr>
           <tr><td>Referral and partner-community data</td><td>Referral bonuses; partner promotions (e.g. ELL)</td><td>Contract</td><td>Account lifetime</td></tr>
         </tbody>
       </table>

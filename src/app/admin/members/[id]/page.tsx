@@ -48,7 +48,7 @@ export default async function MemberPage({
   const staff = await requireStaffPage("OPS");
   const { id } = await params;
   const sp = await searchParams;
-  const member = await prisma.member.findUnique({ where: { id }, include: { city: true, attendanceStats: true } });
+  const member = await prisma.member.findUnique({ where: { id }, include: { city: true, attendanceStats: true, founderLead: { select: { number: true, createdAt: true } } } });
   if (!member) notFound();
   const verification = verificationStatus(member);
 
@@ -166,6 +166,11 @@ export default async function MemberPage({
             </form>
           ) : (
             <p className="mt-2 text-ink-dark-muted">in good standing</p>
+          )}
+          {member.founderLead && (
+            <p className="mt-3 text-xs text-ink-dark-muted">
+              <Badge tone="ok">founder #{member.founderLead.number}</Badge> pre-registered {formatDateOnly(member.founderLead.createdAt, tz)} — honour the founder deal.
+            </p>
           )}
           {partnerClaims.map((c) => (
             <p key={c.id} className="mt-3 text-xs text-ink-dark-muted">

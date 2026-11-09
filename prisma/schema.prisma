@@ -148,6 +148,14 @@ enum StaffRole {
 
 /// Where an event is managed: by our staff (MANUAL) or by a producer's EventOS through the
 /// partner API (EVENTOS — read-only in our backoffice, see docs/EVENTOS_INTEGRATION.md).
+/// Pre-registration lead lifecycle (the /founders landing page, pre-launch lead capture).
+enum FounderLeadStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  UNSUBSCRIBED
+}
+
 enum EventSource {
   MANUAL
   EVENTOS
@@ -177,6 +185,7 @@ model City {
   producers  Producer[]
   events     Event[]
   planPrices PlanPrice[]
+  founderLeads FounderLead[]
 
   @@unique([country, name])
 }
@@ -225,8 +234,48 @@ model Member {
   stripeCustomer   StripeCustomer?
   cardFingerprints PaymentMethodFingerprint[]
   notifications    NotificationLog[]
+  founderLead      FounderLead?
 
   @@index([cityId])
+}
+
+// Pre-registration leads from the public /founders landing page (pre-launch lead capture through
+// social-media ads). Not members: a lead gets an account only when we invite them. `number` is the
+// founder number shown back to them ("you're founder #123"); `memberId` is linked when an account
+// with the same email is created, so the founder deal can be honoured at checkout. Attribution is
+// first touch only (the UTM fields are never overwritten on a repeat signup).
+model FounderLead {
+  id                 String            @id @default(cuid())
+  number             Int               @unique @default(autoincrement())
+  email              String            @unique
+  name               String?
+  cityId             String?
+  status             FounderLeadStatus @default(NEW)
+  consentAt          DateTime // ticked "contact me when SIAPP opens" (GDPR consent basis)
+  utmSource          String?
+  utmMedium          String?
+  utmCampaign        String?
+  utmContent         String?
+  utmTerm            String?
+  referrer           String?
+  landingPath        String?
+  unsubscribeToken   String            @unique @default(cuid())
+  welcomeEmailSentAt DateTime?
+  contactedAt        DateTime?
+  contactedById      String?
+  convertedAt        DateTime?
+  memberId           String?           @unique
+  unsubscribedAt     DateTime?
+  notes              String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  city        City?      @relation(fields: [cityId], references: [id])
+  member      Member?    @relation(fields: [memberId], references: [id])
+  contactedBy StaffUser? @relation(fields: [contactedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([utmSource])
 }
 
 // One row per (member, kind, reference): the job-driven emails (reminders, expiry notices…) are
@@ -844,6 +893,7 @@ model StaffUser {
   keyAdjustments KeyTransaction[]
   fraudReviews   FraudFlag[]
   apiKeysCreated ProducerApiKey[]
+  leadsContacted FounderLead[]
 }
 
 // Idempotency for Stripe webhooks: store every event id, skip duplicates (src/lib/stripe-webhook.ts).

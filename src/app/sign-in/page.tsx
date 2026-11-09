@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { auth, signIn } from "@/lib/auth";
@@ -75,6 +76,10 @@ export default async function SignInPage({
           </>
         )}
       </div>
+      <p className="text-center text-sm text-ink-muted">
+        {t("foundersHint")}{" "}
+        <Link href="/founders" className="text-ink underline hover:text-red-soft">{t("foundersLink")}</Link>
+      </p>
       <LegalFooter className="w-full max-w-sm px-2" />
     </main>
   );

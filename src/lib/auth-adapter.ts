@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { generateReferralCode } from "@/lib/referral-code";
 import { ensureFreeSubscription } from "@/domain/billing/subscriptions";
+import { linkLeadToMember } from "@/domain/leads/register";
 
 /**
  * The Prisma adapter is written against `prisma.user`; our NextAuth user is
@@ -40,6 +41,12 @@ export function memberAdapter(db: PrismaClient = prisma): Adapter {
             await ensureFreeSubscription(member.id, { db });
           } catch (e) {
             console.error("ensureFreeSubscription failed for new member", member.id, e);
+          }
+          // Pre-registered on /founders? Link the lead so the founder deal can be honoured.
+          try {
+            await linkLeadToMember(member.email, member.id, { db });
+          } catch (e) {
+            console.error("linkLeadToMember failed for new member", member.id, e);
           }
           return toAdapterUser(member);
         } catch (e) {

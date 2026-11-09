@@ -28,6 +28,8 @@ export interface EmailTemplateInput {
   preheader?: string;
   /** Small print under the CTA (plain text; escaped). */
   footnote?: string;
+  /** Replaces the default "you have a SIAPP account" footer line (plain text; escaped). Leads aren't members. */
+  footer?: string;
 }
 
 export function escapeHtml(s: string): string {
@@ -79,7 +81,7 @@ ${cta}
 ${footnote}
 </td></tr>
 <tr><td style="padding:20px 4px 0;font-size:12px;line-height:18px;color:${COLORS.inkMuted};">
-You're receiving this because you have a SIAPP account. Lisbon, Portugal.
+${input.footer ? escapeHtml(input.footer) : "You're receiving this because you have a SIAPP account."} Lisbon, Portugal.
 </td></tr>
 </table>
 </td></tr>
@@ -94,6 +96,7 @@ You're receiving this because you have a SIAPP account. Lisbon, Portugal.
     ...input.paragraphs,
     input.cta ? `\n${input.cta.label}: ${input.cta.url}` : "",
     input.footnote ? `\n${input.footnote}` : "",
+    input.footer ? `\n${input.footer}` : "",
   ]
     .filter((line, i, arr) => !(line === "" && arr[i - 1] === ""))
     .join("\n")

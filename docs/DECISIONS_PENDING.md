@@ -22,6 +22,7 @@ the question is whether the assumption is the one you want. Discuss, decide, the
 | 14 | 0 | **Key pack 50 keys priced at €20** (spec said €18, which broke the spec's own "never cheaper per key than REGULAR" rule). | €20 (test enforces the rule). | Change the rule or the price. |
 | 15 | 10 | **Apple / Google Wallet passes** — EventOS has nothing to port. | Not built. | Build with PassKit / Google Wallet API in Phase 10. |
 | 16 | 8 | **Producers without a contact email** settle silently (no statement sent). | Ledger shows "no contact email". | Block publishing events for producers without an email. |
+| 17 | leads | **What exactly is the "founder deal, forever"?** The `/founders` page promises "the best membership terms we'll ever offer, locked for as long as you stay a member" and never names a number. | Nothing is applied automatically: a converted lead is flagged on the member page ("founder #N — honour the founder deal") and in the CSV. | A Stripe coupon (e.g. −20 % forever) auto-applied at the founder's first checkout; a permanent bonus of plan keys per period; a tier upgrade at the lower tier's price. Decide before the first invitation goes out — the copy on `/founders` must then say it. |
 
 Also waiting on you (not design questions): live Stripe keys + `stripe listen` test, Vercel + Neon
 deployment, Resend domain, `DATA_ENCRYPTION_KEY` for production, the EventOS issuing side of partner

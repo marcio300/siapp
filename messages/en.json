@@ -7,7 +7,9 @@
     "sentTitle": "check your inbox.",
     "sentTagline": "the link is your key — it works once and expires in 15 minutes.",
     "errorDisposable": "sorry, throwaway email addresses don't get in. use one you'll keep.",
-    "errorGeneric": "sorry, we couldn't sign you in with that address."
+    "errorGeneric": "sorry, we couldn't sign you in with that address.",
+    "foundersHint": "not a member yet? the doors aren't open —",
+    "foundersLink": "get the founder deal"
   },
   "legal": {
     "terms": "Terms",

@@ -532,6 +532,26 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   first (the lazy FREE subscription grants 2 plan keys on first touch); `sales.updated` is coalesced per event,
   so don't assert a fresh one right after another message. **E2E VERIFIED 2026-11-09 against a local EventOS over real HTTP** (report: EventOS `docs/SIAPP_E2E_Run_2026-11-09.md`; SIAPP-side runner `scripts/e2e-eventos/` = `pg-keep.ts` (embedded PG on 5436 — dev-local hardcodes 5433 which EventOS uses), `setup-db.ts`, `cli.ts` producer/member/redeem/pay/scan/cancel/eligibility/noshow/state/outbound/sql): connect, snapshot + publish, FULL → mirror ticket, both scanners, DISCOUNT +1 `order.create` → `order.paid`, `order.expired`, cancel → `refund.succeeded`, sales, pause/publish, no-show reversal all matched the contract. One bug fixed: `flushOutbound` signed with the caller's logical `now` (a job with a shifted clock → EventOS 401 `stale`) — now the wall clock, test added (suite 149). Also: the Stripe webhook route used `??` on `STRIPE_SECRET_KEY`, so an EMPTY value in `.env` made the SDK throw → every webhook 400 (now `||`). `next dev` works in this cloud sandbox.
 - **Done — Phases 11–13 DEPLOYED to production (2026-11-09)**: `main` fast-forwarded to `621056d`, Vercel build `dpl_2uXxTiKETRzXszcpw5egVtQxgfCa` READY on `siapp-two.vercel.app`; the build ran `pnpm db:deploy` (3 new migrations) and `/api/partner/v1/pricing` answers 401 `unauthorized` without a key (DB-backed check → tables exist). The 11 partner settings fall back to `SETTING_DEFAULTS` until seeded/edited (seed does NOT run in the build). Cron `partner-outbox` every minute is live. Not yet done in prod: create the first producer with an EventOS connection + API key in `/admin/producers`, hand the key to the EventOS org (Settings → SIAPP there), repeat the e2e steps 1–3 against the real hosts.
+- **Done — Founder pre-registration (lead capture for pre-launch ads; 2026-11-09)**: public `/founders` landing page (dark, one
+  form: optional first name, email, city select when >1 active city, required consent checkbox "contact me when SIAPP opens…
+  I'm 24 or older"; headline "sorry, the doors aren't open yet. / but the first ones in get the founder deal — forever."; ads
+  link to it with `?utm_*=` which ride through hidden inputs → first-touch attribution on the lead; honeypot `website` field;
+  per-IP limiter 8/min reusing `checkRateLimit`; `?error=` copy per `LeadError.reason`) → `/founders/thanks?n=<founderNumber>`
+  (own URL so a pixel can count the conversion later; share button), `/founders/unsubscribe?t=<token>` (GET → UNSUBSCRIBED →
+  `/founders?unsubscribed=1`). Schema `FounderLead` (email unique, `number` SERIAL = the founder number shown back,
+  `status NEW|CONTACTED|CONVERTED|UNSUBSCRIBED`, `consentAt`, utm × 5 + referrer + landingPath, `unsubscribeToken`,
+  `welcomeEmailSentAt`, `contactedAt/By`, `convertedAt`, `memberId @unique`) — migration `20261110090000_founder_leads`.
+  `src/domain/leads/`: `registerFounderLead(raw, {db, now, sendWelcome})` (zod `PreRegistrationSchema`; disposable domains
+  refused; repeat signup = same row + same number, name/city refreshed, UTM never overwritten, UNSUBSCRIBED → NEW again with a
+  new welcome; P2002 race → treated as repeat; welcome email `founderWelcomeEmail` best-effort via `renderEmail` which gained an
+  optional `footer` line because leads aren't members), `unsubscribeLead`, `linkLeadToMember(email, memberId)` (called from the
+  auth adapter's createUser, best-effort → status CONVERTED; the admin member page shows a "founder #N — honour the founder deal"
+  badge), `markLeadsContacted(ids, staffId)` (NEW only) / `reopenLead`, `leadStats`, `leadsCsv`. Backoffice `/admin/leads`
+  ("Founders" in the nav, OPS+): stat tiles, by-source chips, search/status filter, per-row Contacted/Undo + "Mark these N as
+  contacted" for the filtered NEW rows, `GET /api/admin/leads/csv?status&q&source`. Sign-in page links to it ("get the founder
+  deal"); privacy notice gained the pre-registration row. NOT decided yet: what the founder deal concretely is (price/keys/tier)
+  — `docs/DECISIONS_PENDING.md` #17 — and the invitation email itself (staff send it by hand / from the CSV, then mark contacted).
+  No ad pixel on the page yet (needs cookie consent first). Tests `tests/leads.test.ts` (6 → suite 155).
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE
