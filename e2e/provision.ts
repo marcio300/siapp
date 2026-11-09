@@ -16,6 +16,7 @@ import { addOffer, createEvent, setEventStatus } from "../src/domain/events";
     const seed = await runSeed(db, { adminEmail: "admin@e2e.siapp" });
     // A fresh account redeems three times inside its first hour: lift the velocity rule for the run.
     await db.setting.update({ where: { key: "velocity_first_hour_max" }, data: { value: 10 } });
+    await db.setting.update({ where: { key: "public_signin_open" }, data: { value: 1 } }); // the e2e flow signs up a brand-new member
     const run = Date.now().toString(36);
     const producer = await createProducer({ name: `E2E Club ${run}`, cityId: seed.cityId }, { db });
     const HOUR = 3_600_000;

@@ -30,6 +30,9 @@ export const SETTING_DEFAULTS = {
   partner_photo_ttl_hours: 24,
   partner_max_offers_per_event: 10,
   partner_rate_limit_per_minute: 120,
+  // Launch switch: 0 = public sign-in closed (only staff, existing members and INVITED founder leads can
+  // sign in; nobody else can create an account); 1 = open to everyone. Flipped in /admin/settings.
+  public_signin_open: 0 as 0 | 1,
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS;
@@ -57,6 +60,7 @@ export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
   partner_photo_ttl_hours: "Hours after an event ends that a signed selfie URL stays valid for the producer's scanner",
   partner_max_offers_per_event: "Maximum SIAPP offers an EventOS producer may configure on one event",
   partner_rate_limit_per_minute: "Partner API requests per minute per key",
+  public_signin_open: "1 = anyone can sign in / create an account; 0 = closed until launch (staff, existing members and invited founders only)",
 };
 
 /**
@@ -68,4 +72,9 @@ export async function getSetting<K extends SettingKey>(key: K, db: PrismaClient 
   const row = await db.setting.findUnique({ where: { key } });
   if (!row) return SETTING_DEFAULTS[key];
   return row.value as (typeof SETTING_DEFAULTS)[K];
+}
+
+/** Staff edit (ADMIN): writes the row the backoffice reads. Create-only seeding never overwrites it. */
+export async function setSetting<K extends SettingKey>(key: K, value: (typeof SETTING_DEFAULTS)[K], db: PrismaClient = prisma): Promise<void> {
+  await db.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
 }

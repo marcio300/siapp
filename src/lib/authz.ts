@@ -58,7 +58,7 @@ async function sessionContext(): Promise<StaffContext | null> {
 /** For server components/pages: redirects when unauthenticated or under-privileged. */
 export async function requireStaffPage(minimum: StaffRole = "DOOR"): Promise<StaffContext> {
   const ctx = (await testSeamContext()) ?? (await sessionContext());
-  if (!ctx) redirect("/sign-in?next=/admin");
+  if (!ctx) redirect("/staff/sign-in?next=/admin");
   if (!hasRole(ctx, minimum)) redirect("/admin");
   return ctx;
 }

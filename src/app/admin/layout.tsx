@@ -14,7 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   async function doSignOut() {
     "use server";
-    await signOut({ redirectTo: "/sign-in" });
+    await signOut({ redirectTo: "/staff/sign-in" });
   }
 
   const logo = (

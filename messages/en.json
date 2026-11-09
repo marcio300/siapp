@@ -9,7 +9,19 @@
     "errorDisposable": "sorry, throwaway email addresses don't get in. use one you'll keep.",
     "errorGeneric": "sorry, we couldn't sign you in with that address.",
     "foundersHint": "not a member yet? the doors aren't open —",
-    "foundersLink": "get the founder deal"
+    "foundersLink": "get the founder deal",
+    "closedTitle": "sorry, the doors aren't open yet.",
+    "closedTagline": "we're invite-only until launch. founders hear first.",
+    "closedBody": "Got your invitation? Sign in with the email it was sent to.",
+    "closedToggle": "I have an invitation",
+    "errorClosed": "sorry, that address isn't on the list yet. pre-register and you'll be invited when we open."
+  },
+  "staffSignIn": {
+    "title": "staff only.",
+    "tagline": "the backoffice door. members use the member app.",
+    "submit": "Email me a link",
+    "sentTitle": "check your inbox.",
+    "sentTagline": "if that address is on the staff list, the link is on its way. it works once and expires in 15 minutes."
   },
   "legal": {
     "terms": "Terms",

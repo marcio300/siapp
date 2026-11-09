@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/backoffice/page-header";
 import { StatCard } from "@/components/backoffice/stat-card";
 import { EmptyRow, Table, Td, Th } from "@/components/backoffice/table";
 import { INVITE_BATCH_MAX, LEAD_STATUSES, leadStats } from "@/domain/leads";
+import { getSetting } from "@/lib/settings";
 import { markContactedAction, reopenLeadAction, sendInvitationsAction } from "./actions";
 
 const TONE: Record<FounderLeadStatus, BadgeTone> = { NEW: "warn", CONTACTED: "neutral", CONVERTED: "ok", UNSUBSCRIBED: "red" };
@@ -27,10 +28,11 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     ...(source ? (source === "(direct)" ? { utmSource: null } : { utmSource: source }) : {}),
     ...(q ? { OR: [{ email: { contains: q, mode: "insensitive" } }, { name: { contains: q, mode: "insensitive" } }, ...(/^\d+$/.test(q) ? [{ number: Number(q) }] : [])] } : {}),
   };
-  const [rows, total, stats] = await Promise.all([
+  const [rows, total, stats, signInOpen] = await Promise.all([
     prisma.founderLead.findMany({ where, include: { city: { select: { name: true } }, member: { select: { id: true } } }, orderBy: { number: "desc" }, take: PAGE }),
     prisma.founderLead.count({ where }),
     leadStats(),
+    getSetting("public_signin_open"),
   ]);
   const filterQuery = new URLSearchParams(Object.entries({ status: status ?? "", q, source }).filter(([, v]) => v)).toString();
   const back = `/admin/leads${filterQuery ? `?${filterQuery}` : ""}`;
@@ -41,7 +43,12 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Founders"
-        subtitle="Pre-registrations from /founders. They're leads, not members: when the doors open, send the invitation — they sign in with the same email, the account is created and the row flips to converted by itself."
+        subtitle={
+          <>
+            Pre-registrations from /founders. They&apos;re leads, not members: send the invitation and they sign in with the same email, the account is created and the row flips to converted by itself.{" "}
+            {signInOpen === 1 ? "Public sign-in is open." : <>Public sign-in is <strong>closed</strong>: only invited founders (and staff) can sign in until you open it in <Link href="/admin/settings" className="underline">Settings</Link>.</>}
+          </>
+        }
         actions={
           <>
             <Link href={`/api/admin/leads/csv${filterQuery ? `?${filterQuery}` : ""}`} className="btn btn-outline">Export CSV</Link>

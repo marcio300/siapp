@@ -6,6 +6,7 @@ import { memberAdapter } from "@/lib/auth-adapter";
 import { sendEmail } from "@/lib/email";
 import { signInEmail } from "@/lib/email/templates";
 import { isDisposableEmail } from "@/domain/fraud/disposable";
+import { signInAllowed } from "@/domain/identity/gate";
 
 /**
  * Authentication (ported from EventOS, trimmed to the SIAPP rules): email
@@ -53,6 +54,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Rule 7: no disposable domains, no banned members (the sign-in page
       // checks first for a friendly message; this is the enforcement).
       if (isDisposableEmail(user.email)) return false;
+      // Launch switch: before we open, only staff, existing members and
+      // invited founders get a link (src/domain/identity/gate.ts).
+      if (!(await signInAllowed(user.email)).ok) return false;
       const existing = await prisma.member.findUnique({
         where: { email: user.email },
         select: { bannedAt: true },
