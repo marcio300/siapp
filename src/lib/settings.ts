@@ -18,6 +18,18 @@ export const SETTING_DEFAULTS = {
   device_max_accounts: 3,
   same_card_max_accounts: 1,
   pending_payment_minutes: 10,
+  // EventOS partner API (docs/EVENTOS_INTEGRATION.md, contract §2.1/§6). €1 per key, owner 2026-11-08.
+  key_value_cents: 100,
+  min_key_cost: 2,
+  guestlist_key_cost: 10,
+  key_cost_override_pct: 0,
+  min_discount_percent: 10,
+  max_discount_percent: 99,
+  partner_payment_hold_minutes: 15,
+  eventos_noshow_grace_hours: 6,
+  partner_photo_ttl_hours: 24,
+  partner_max_offers_per_event: 10,
+  partner_rate_limit_per_minute: 120,
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS;
@@ -34,6 +46,17 @@ export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
   device_max_accounts: "Accounts allowed per device fingerprint before fraud review",
   same_card_max_accounts: "Accounts allowed per Stripe card fingerprint before fraud review",
   pending_payment_minutes: "Minutes a discounted-ticket redemption may stay PENDING_PAYMENT before releasing capacity",
+  key_value_cents: "Member value one key represents (the pricing rule for EventOS offers: keys = value ÷ this)",
+  min_key_cost: "Floor for any EventOS offer's key cost",
+  guestlist_key_cost: "Fixed key cost of an EventOS guest-list offer",
+  key_cost_override_pct: "Band (%) a producer may nudge a computed key cost by — 0 = none",
+  min_discount_percent: "Minimum discount an EventOS producer can offer SIAPP members",
+  max_discount_percent: "Maximum discount (100 % = use a full-redemption offer instead)",
+  partner_payment_hold_minutes: "Minutes a producer-collects redemption may stay PENDING_PAYMENT",
+  eventos_noshow_grace_hours: "Hours after an EventOS event ends before no-shows are marked (late check-in syncs)",
+  partner_photo_ttl_hours: "Hours after an event ends that a signed selfie URL stays valid for the producer's scanner",
+  partner_max_offers_per_event: "Maximum SIAPP offers an EventOS producer may configure on one event",
+  partner_rate_limit_per_minute: "Partner API requests per minute per key",
 };
 
 /**
