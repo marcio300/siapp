@@ -18,6 +18,7 @@ import {
   type OfferInput,
 } from "@/domain/events";
 import { refundEventRedemptions } from "@/domain/redemption/lifecycle";
+import { setOfferKeyCostOverride } from "@/domain/partners-api";
 
 function eventInput(fd: FormData): EventInput {
   return {
@@ -141,6 +142,20 @@ export async function updateOfferAction(fd: FormData): Promise<void> {
   const offerId = text(fd, "offerId") ?? "";
   try {
     await updateOffer(offerId, offerInput(fd));
+  } catch (e) {
+    fail(e, `/admin/events/${eventId}#offers`);
+  }
+  redirect(`/admin/events/${eventId}?offer=saved#offers`);
+}
+
+/** ADMIN: override (or clear) the pricing-rule key cost of an EventOS offer. */
+export async function overrideKeyCostAction(fd: FormData): Promise<void> {
+  await requireStaff("ADMIN");
+  const eventId = text(fd, "eventId") ?? "";
+  const offerId = text(fd, "offerId") ?? "";
+  const raw = text(fd, "keyCostOverride")?.trim() ?? "";
+  try {
+    await setOfferKeyCostOverride(offerId, raw === "" ? null : Number(raw));
   } catch (e) {
     fail(e, `/admin/events/${eventId}#offers`);
   }

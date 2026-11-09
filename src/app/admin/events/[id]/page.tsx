@@ -10,16 +10,17 @@ import { Badge, statusTone } from "@/components/backoffice/badge";
 import { PageHeader, SectionTitle } from "@/components/backoffice/page-header";
 import { KeyIcon } from "@/components/key-icon";
 import { EmptyRow, Table, Td, Th } from "@/components/backoffice/table";
-import { addOfferAction, deleteOfferAction, duplicateEventAction, regeneratePinAction, setEventStatusAction, updateEventAction, updateOfferAction } from "../actions";
+import { addOfferAction, deleteOfferAction, duplicateEventAction, overrideKeyCostAction, regeneratePinAction, setEventStatusAction, updateEventAction, updateOfferAction } from "../actions";
 import { EventForm } from "../event-form";
 import { OfferForm } from "../offer-form";
 
 export default async function EventPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
-  await requireStaffPage("OPS");
+  const staff = await requireStaffPage("OPS");
   const { id } = await params;
   const sp = await searchParams;
   const event = await prisma.event.findUnique({ where: { id }, include: { producer: true, city: true, offers: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } } });
   if (!event) notFound();
+  const managedInEventOS = event.source === "EVENTOS";
   const tz = event.city.timezone;
   const [producers, counters, cancellationDefault] = await Promise.all([
     prisma.producer.findMany({ where: { cityId: event.cityId }, include: { city: true }, orderBy: { name: "asc" } }),
@@ -39,26 +40,32 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           <>
             {event.producer.name} · {event.city.name} · {formatDate(event.startsAt, tz)} → {formatDate(event.endsAt, tz)} ·{" "}
             <Badge tone={statusTone(event.status)}>{event.status.toLowerCase()}</Badge>
+            {managedInEventOS && <> <Badge>EventOS</Badge>{event.pausedAt && <> <Badge tone="warn">paused</Badge></>}</>}
             {event.publishedAt && <> · published {formatDate(event.publishedAt, tz)}</>}
           </>
         }
         actions={
           <div className="flex flex-wrap gap-2">
-            {event.status === "DRAFT" && (
+            {managedInEventOS && event.status === "PUBLISHED" && (
+              <form action={setEventStatusAction}><input type="hidden" name="id" value={event.id} /><input type="hidden" name="status" value="CANCELLED" /><button className="btn btn-outline text-red">Emergency cancel</button></form>
+            )}
+            {!managedInEventOS && event.status === "DRAFT" && (
               <form action={setEventStatusAction}><input type="hidden" name="id" value={event.id} /><input type="hidden" name="status" value="PUBLISHED" /><button className="btn btn-primary">Publish</button></form>
             )}
-            {event.status === "PUBLISHED" && (
+            {!managedInEventOS && event.status === "PUBLISHED" && (
               <>
                 <form action={setEventStatusAction}><input type="hidden" name="id" value={event.id} /><input type="hidden" name="status" value="DRAFT" /><button className="btn btn-outline">Unpublish</button></form>
                 <form action={setEventStatusAction}><input type="hidden" name="id" value={event.id} /><input type="hidden" name="status" value="FINISHED" /><button className="btn btn-outline">Finish</button></form>
                 <form action={setEventStatusAction}><input type="hidden" name="id" value={event.id} /><input type="hidden" name="status" value="CANCELLED" /><button className="btn btn-outline text-red">Cancel event</button></form>
               </>
             )}
-            <form action={duplicateEventAction} className="flex items-center gap-1">
-              <input type="hidden" name="id" value={event.id} />
-              <input name="shiftDays" type="number" defaultValue={7} className="input w-20 !py-1" title="shift dates by N days" />
-              <button className="btn btn-outline">Duplicate</button>
-            </form>
+            {!managedInEventOS && (
+              <form action={duplicateEventAction} className="flex items-center gap-1">
+                <input type="hidden" name="id" value={event.id} />
+                <input name="shiftDays" type="number" defaultValue={7} className="input w-20 !py-1" title="shift dates by N days" />
+                <button className="btn btn-outline">Duplicate</button>
+              </form>
+            )}
             <Link href="/admin/events" className="btn btn-ghost">← Events</Link>
           </div>
         }
@@ -68,6 +75,14 @@ export default async function EventPage({ params, searchParams }: { params: Prom
         <p className="mb-4 rounded-lg border border-ok/40 bg-ok/15 px-4 py-2 text-sm">
           {sp.created ? "Event created as a draft." : sp.status ? `Event is now ${sp.status}.` : sp.offer ? `Offer ${sp.offer}.` : "Saved."}
         </p>
+      )}
+      {managedInEventOS && (
+        <div className="mb-4 rounded-lg border border-line-light bg-bg-elevated/40 px-4 py-3 text-sm">
+          <p className="font-medium">Managed in EventOS by {event.producer.name}.</p>
+          <p className="text-xs text-ink-dark-muted">
+            Details, offers and status come from the producer's SIAPP tab (snapshot v{event.snapshotVersion}, EventOS id <span className="font-mono">{event.externalId}</span>). Here you can review fraud, override an offer's key cost and, in an emergency, cancel the event. Discounted tickets are paid to the producer through EventOS — nothing to settle.
+          </p>
+        </div>
       )}
       {sp.pin && (
         <div className="mb-4 rounded-xl border-2 border-red bg-white p-4">
@@ -79,12 +94,22 @@ export default async function EventPage({ params, searchParams }: { params: Prom
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card p-5 lg:col-span-2">
-          {closed ? <p className="text-sm text-ink-dark-muted">This event is {event.status.toLowerCase()} — details are frozen.</p> : <EventForm event={event} timezone={tz} producers={producers} action={updateEventAction} submitLabel="Save" />}
+          {closed ? (
+            <p className="text-sm text-ink-dark-muted">This event is {event.status.toLowerCase()} — details are frozen.</p>
+          ) : managedInEventOS ? (
+            <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+              <div><dt className="text-xs text-ink-dark-muted">Venue</dt><dd>{event.venue ?? "—"}{event.address ? <span className="text-ink-dark-muted"> · {event.address}</span> : null}</dd></div>
+              <div><dt className="text-xs text-ink-dark-muted">When</dt><dd>{formatDate(event.startsAt, tz)} → {formatDate(event.endsAt, tz)}</dd></div>
+              <div className="sm:col-span-2"><dt className="text-xs text-ink-dark-muted">Description</dt><dd className="whitespace-pre-wrap">{event.description ?? "—"}</dd></div>
+            </dl>
+          ) : (
+            <EventForm event={event} timezone={tz} producers={producers} action={updateEventAction} submitLabel="Save" />
+          )}
         </div>
         <div className="card p-5 text-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Scanner login</p>
           <p className="mt-2">Code <span className="font-mono text-base font-semibold">{event.scannerCode}</span></p>
-          <p className="text-xs text-ink-dark-muted">PIN: shown once at creation. Hand both to the door.</p>
+          <p className="text-xs text-ink-dark-muted">{managedInEventOS ? "The producer scans with the EventOS scanner; this login is the fallback — regenerate a PIN to use it." : "PIN: shown once at creation. Hand both to the door."}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <form action={regeneratePinAction}>
               <input type="hidden" name="id" value={event.id} />
@@ -128,6 +153,23 @@ export default async function EventPage({ params, searchParams }: { params: Prom
                 <div className="border-t border-line-light px-5 py-4">
                   {closed ? (
                     <p className="text-sm text-ink-dark-muted">Frozen.</p>
+                  ) : managedInEventOS ? (
+                    <div className="text-sm">
+                      <p className="text-ink-dark-muted">
+                        Configured in EventOS (<span className="font-mono text-xs">{o.externalRef}</span>) · paid to the producer · key cost from the pricing rule{o.keyCostOverride !== null ? ` — overridden to ${o.keyCostOverride}` : ""}.
+                      </p>
+                      {staff.role === "ADMIN" && (
+                        <form action={overrideKeyCostAction} className="mt-3 flex flex-wrap items-end gap-2">
+                          <input type="hidden" name="eventId" value={event.id} />
+                          <input type="hidden" name="offerId" value={o.id} />
+                          <label className="text-xs">
+                            <span className="block text-ink-dark-muted">Key cost override (empty = pricing rule)</span>
+                            <input name="keyCostOverride" type="number" min={0} step={1} defaultValue={o.keyCostOverride ?? ""} className="input w-32 !py-1" />
+                          </label>
+                          <button className="btn btn-outline !py-1 text-xs">Save override</button>
+                        </form>
+                      )}
+                    </div>
                   ) : (
                     <>
                       <OfferForm eventId={event.id} timezone={tz} offer={o} action={updateOfferAction} submitLabel="Save offer" cancellationDefault={cancellationDefault} />
@@ -143,7 +185,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             );
           })}
         </div>
-        {!closed && (
+        {!closed && !managedInEventOS && (
           <div className="card mt-4 p-5" id="add-offer">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Add offer</p>
             <OfferForm eventId={event.id} timezone={tz} action={addOfferAction} submitLabel="Add offer" cancellationDefault={cancellationDefault} />

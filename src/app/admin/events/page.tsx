@@ -76,7 +76,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
                 <div className="text-xs text-ink-dark-muted">{e.producer.name} · {e.city.name}{e.venue ? ` · ${e.venue}` : ""}</div>
               </Td>
               <Td className="whitespace-nowrap text-ink-dark-muted">{formatDate(e.startsAt, e.city.timezone)}</Td>
-              <Td><Badge tone={statusTone(e.status)}>{e.status.toLowerCase()}</Badge></Td>
+              <Td><Badge tone={statusTone(e.status)}>{e.status.toLowerCase()}</Badge>{e.source === "EVENTOS" && <> <Badge>EventOS</Badge></>}</Td>
               <Td>
                 {e.offers.length === 0 && <span className="text-ink-dark-muted">no offers</span>}
                 <ul className="space-y-0.5 text-xs">

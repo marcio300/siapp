@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/authz";
 import { checkbox, text } from "@/lib/forms";
 import { ProducerError, clearPayoutDetails, createProducer, updateProducer } from "@/domain/producers";
+import { createProducerApiKey, revokeProducerApiKeys, unbindProducer } from "@/domain/partners-api";
 
 function input(fd: FormData) {
   return {
@@ -40,6 +41,30 @@ export async function updateProducerAction(fd: FormData): Promise<void> {
     if (e instanceof ProducerError) redirect(`/admin/producers/${id}?error=${encodeURIComponent(e.message)}`);
     throw e;
   }
+  redirect(`/admin/producers/${id}?saved=1`);
+}
+
+/** ADMIN: mint the EventOS API key (shown once on the redirect). Revokes any active key. */
+export async function generateApiKeyAction(fd: FormData): Promise<void> {
+  const staff = await requireStaff("ADMIN");
+  const id = text(fd, "id") ?? "";
+  const { plain } = await createProducerApiKey(id, staff.staffId);
+  redirect(`/admin/producers/${id}?apiKey=${encodeURIComponent(plain)}`);
+}
+
+export async function revokeApiKeyAction(fd: FormData): Promise<void> {
+  await requireStaff("ADMIN");
+  const id = text(fd, "id") ?? "";
+  await revokeProducerApiKeys(id);
+  redirect(`/admin/producers/${id}?saved=1`);
+}
+
+/** ADMIN: forget the EventOS binding (org, webhook, secrets) and revoke keys. Events stay. */
+export async function unbindEventOSAction(fd: FormData): Promise<void> {
+  await requireStaff("ADMIN");
+  const id = text(fd, "id") ?? "";
+  await revokeProducerApiKeys(id);
+  await unbindProducer(id);
   redirect(`/admin/producers/${id}?saved=1`);
 }
 
