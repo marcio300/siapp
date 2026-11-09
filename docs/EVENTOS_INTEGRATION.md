@@ -18,20 +18,25 @@ SIAPP about the check-in; the SIAPP scanner keeps working too.
 
 ## What SIAPP must provide
 
-1. **Producer connection.** `Producer.eventosOrgId` (unique) + `ProducerApiKey` (hashed, prefix,
-   revocable; one active per producer) generated from the producer page in the backoffice.
+1. **Producer connection** *(Phase 11, done)*. `Producer.eventosOrgId` (unique) + `ProducerApiKey` (hashed,
+   prefix, revocable; one active per producer) generated from the producer page in the backoffice. The
+   webhook secret is stored **encrypted** (SIAPP signs with it), previous secret valid 24 h after a rotation.
 2. **Partner API** `/api/partner/v1/*` (bearer key): `connect`, `pricing`, `events/{id}` upsert +
-   `publish|pause|cancel`, `events/{id}/sales`, `events/{id}/settlement`, `redemptions/{id}/checkin`,
-   `redemptions/{id}/payment`, signed `tickets/{id}/photo`. All validation of offers lives here.
-3. **Pricing rule** in `Setting`: `key_value_cents` = **100** (€1 per key, owner 2026-11-08),
-   `min_key_cost` 2, `guestlist_key_cost` 10, `key_cost_override_pct` 0, `min_discount_percent` 10.
+   `publish|pause|cancel`, `events/{id}/sales`, `events/{id}/settlement`, signed `tickets/{id}/photo`
+   *(Phase 11, done)*; `redemptions/{id}/checkin` (Phase 12), `redemptions/{id}/payment` (Phase 13). All
+   validation of offers lives here (`src/domain/partners-api/snapshot.ts`).
+3. **Pricing rule** in `Setting` *(Phase 11, done — `src/domain/partners-api/pricing.ts`)*:
+   `key_value_cents` = **100** (€1 per key, owner 2026-11-08), `min_key_cost` 2, `guestlist_key_cost` 10,
+   `key_cost_override_pct` 0, `min_discount_percent` 10, `max_discount_percent` 99 (+
+   `partner_rate_limit_per_minute` 120).
    `keyCost = max(min_key_cost, ceil(value / key_value_cents))` where value = face (full) or
    face × d % (discount). Producers never set key costs; SIAPP staff may override one offer in the
    backoffice.
-4. **Event/offer model additions.** `Event.source MANUAL|EVENTOS`, `Event.externalId`,
-   `Event.snapshotVersion`; `Offer.externalRef` ("{eventId}:{ticketTypeId}:{mode}"),
-   `Offer.paymentMode SIAPP_COLLECTS|PRODUCER_COLLECTS`; EventOS-sourced events read-only in the
-   backoffice except fraud/review and emergency cancel.
+4. **Event/offer model additions** *(Phase 11, done)*. `Event.source MANUAL|EVENTOS`, `Event.externalId`,
+   `Event.snapshotVersion`, `Event.pausedAt`; `Offer.externalRef` ("{eventId}:{ticketTypeId}:{mode}"),
+   `Offer.paymentMode SIAPP_COLLECTS|PRODUCER_COLLECTS`, `Offer.keyCostOverride`; EventOS-sourced events
+   read-only in the backoffice except fraud/review, emergency cancel and the staff key-cost override. The
+   +1 on an EventOS offer costs the same keys as the member (same value, same rule).
 5. **Outbox** (`OutboundEvent`: target, type, payload, attempts, nextAttemptAt, status) + job, for
    `redemption.activated`, `redemption.cancelled`, `ticket.checked_in`, `sales.updated` to EventOS,
    signed HMAC with the producer's webhook secret. SIAPP has no outbox today.

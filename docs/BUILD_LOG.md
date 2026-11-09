@@ -651,3 +651,59 @@ Architecture in the EventOS repo, `docs/SIAPP_Channel_Architecture.md`; SIAPP-si
 
 - Exact JSON contract (`EventOS docs/SIAPP_API.md`), then build phases 1–5 in both repos.
 - SIAPP terms update for decision C.
+
+---
+
+## Phase 11 — EventOS partner API (2026-11-09)
+
+The SIAPP half of `docs/EVENTOS_INTEGRATION.md`, built against the contract in the EventOS repo
+(`docs/SIAPP_API.md` §1–3, §6). EventOS builds the other half (SIAPP tab, snapshot push) in parallel.
+
+**Shipped**
+
+- Producer API keys (`siapp_pk_<8>_<32>`, sha256 at rest, one active per producer, ADMIN-generated and
+  shown once) and the `/connect` handshake that binds a producer to an EventOS organization, rotates the
+  webhook secret (previous one valid 24 h) and returns the pricing rule, limits and contract version.
+- `PUT /api/partner/v1/events/{eventosEventId}`: one transaction that upserts the EventOS-managed event
+  and its offers from the snapshot — version guard, every validation code of the contract, frozen
+  fields after live redemptions, deletion refused with history, key cost from the pricing rule.
+- Status mirror (`publish` / `pause` = `Event.pausedAt` / `cancel` = keys refunded), incremental
+  `sales` with cursor, `settlement` (always "nothing to settle" for EventOS producers), query-signed
+  selfie route for the producer's scanner, idempotency replay store, per-key rate limit.
+- Member app refuses paused events (`EVENT_PAUSED`) and hides them from the week listing.
+- Backoffice: "EventOS connection" card on the producer page; EventOS-sourced events are read-only
+  with a banner, an emergency cancel and a per-offer staff key-cost override.
+- 11 new settings (€1 per key etc.), migration `20261109090000_eventos_partner_api`, 12 tests (suite 127).
+
+**Decisions**
+
+- **Webhook secret stored encrypted, not hashed.** The build plan said "secret hash", but SIAPP has to
+  *sign* with it (outbound messages in Phase 12, photo URLs now), so a hash is useless. Same AES-GCM
+  at-rest encryption as payout details (`DATA_ENCRYPTION_KEY`).
+- **+1 costs the same keys as the member.** The contract's `plusOne` has no key field; the +1 receives
+  the same value, so the pricing rule gives the same cost. Cash for the +1 only on discount offers.
+- **Full-redemption offers store `faceValueCents` too** (the schema comment said DISCOUNT only) so the
+  rule can recompute the key cost when staff clear an override.
+- **Guest-list capacity is ignored** (warning `guestlist_capacity_ignored`): SIAPP guest lists are
+  time-window allocations; eligibility never enforced a cap on them and the contract marks it optional.
+- **`capacity_exceeds_type` is an error**, not the warning the contract's example response shows — the
+  carve-out on the EventOS side depends on the cap fitting the ticket type.
+- **Live offers keep their key cost** across pricing-rule changes (like Stripe prices); a staff override
+  always wins, including on the next push from EventOS.
+- **Pause keeps `status = PUBLISHED`** and sets `pausedAt`, so `setEventStatus`'s transition map and
+  `publishedAt` stay untouched; `publish` always clears the pause.
+- **The partner-created event gets scanner credentials but the PIN is discarded** — the EventOS
+  scanner is the door; staff can regenerate a PIN for the SIAPP scanner fallback.
+- **Rate limit is a setting** (`partner_rate_limit_per_minute`, the eleventh key) with an in-memory
+  fixed window per key — fine for one region, revisit if we ever run multi-region.
+
+**Open**
+
+- Phase 12: outbound events (`redemption.activated/cancelled`, `ticket.checked_in`, `sales.updated`,
+  `producer.disconnected`), external check-ins, no-show grace; `RedemptionView.externalOrderId/
+  externalTicketId` return null until then.
+- Phase 13: producer-collects payment flow (`order.create` → `order.paid`), settlement skip,
+  `startRedemptionPayment` dispatcher.
+- SIAPP terms update for decision C (name + email reach the producer on paid tickets).
+- Admin "unbind" leaves EventOS-sourced events in place; a disconnected producer's events stay
+  read-only until EventOS reconnects (no reassignment to manual yet).

@@ -359,6 +359,75 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   in the Vercel build (`vercel.json` `buildCommand: pnpm db:deploy && pnpm build`), seed ran in the
   first build. STRIPE keys NOT set (owner). Full state + the sandbox-can't-reach-Neon gotcha in
   `docs/RUNBOOK.md` §3 "Current deployment".
+- **Done — Phase 11 (EventOS partner API — SIAPP side of `docs/EVENTOS_INTEGRATION.md`, contract = EventOS
+  `docs/SIAPP_API.md`)**: schema — enums `EventSource` (MANUAL|EVENTOS) + `PaymentMode` (SIAPP_COLLECTS|
+  PRODUCER_COLLECTS); `Producer.eventosOrgId @unique/eventosOrgName/eventosAppUrl/eventosWebhookUrl/
+  eventosWebhookSecretEnc/eventosPreviousSecretEnc/eventosPreviousSecretUntil/eventosConnectedAt` (the webhook
+  secret is what SIAPP SIGNS WITH → stored ENCRYPTED via `encryptText`, not hashed — the build-plan's "hash"
+  was unworkable; previous secret valid 24 h), `ProducerApiKey` (prefix + sha256 `keyHash @unique`, one active
+  per producer, `createdBy` StaffUser, `lastUsedAt` stamped ≤ once/min), `PartnerIdempotency` (unique
+  producer+key, requestHash, status, response Json, 24 h replay), `Event.source/externalId/snapshotVersion/
+  pausedAt` (+ `@@unique([producerId, externalId])`), `Offer.externalRef/paymentMode/keyCostOverride`
+  (+ `@@unique([eventId, externalRef])`) — migration `20261109090000_eventos_partner_api`. Settings (+11, seeded):
+  `key_value_cents` 100, `min_key_cost` 2, `guestlist_key_cost` 10, `key_cost_override_pct` 0,
+  `min_discount_percent` 10, `max_discount_percent` 99, `partner_payment_hold_minutes` 15,
+  `eventos_noshow_grace_hours` 6, `partner_photo_ttl_hours` 24, `partner_max_offers_per_event` 10,
+  `partner_rate_limit_per_minute` 120. `src/domain/partners-api/` — `errors.ts` (`PartnerApiError{status, code,
+  details, headers}` → contract envelope), `keys.ts` (`generateApiKey` `siapp_pk_<8>_<32>` base62, `verifyApiKey`
+  → unauthorized|producer_revoked, `createProducerApiKey` revokes the active one, `revokeProducerApiKeys`),
+  `auth.ts` (`requireProducerKey(req)` bearer → producer+city, in-memory fixed-window `checkRateLimit` per key id
+  w/ `Retry-After`; `resetRateLimitForTests`), `idempotency.ts` (`withIdempotency` replay byte-for-byte w/
+  `Idempotency-Replayed: true`, different body → 422 `idempotency_mismatch`, 5xx never stored), `http.ts`
+  (`partnerRoute(req, handler, {idempotent})` = auth → JSON body → idempotency → `X-Request-Id` + `no-store`;
+  Zod/JSON errors → 422), `pricing.ts` (`CONTRACT_VERSION "2026-11-08"`, `computeKeyCost({mode, priceCents,
+  discountPercent, override}, pricing)` = THE pricing rule: FULL value=face, DISCOUNT value=round(face×d%),
+  keys=max(min, ceil(value/keyValue)), GUESTLIST fixed, override wins; `memberPriceCents`; `loadPricing/loadLimits`
+  from settings; `MODE_TO_TYPE` FULL→FREE_TICKET etc.), `snapshot.ts` (`EventSnapshotSchema/OfferSpecSchema` zod =
+  contract §2.2/2.3; pure `validateSnapshot` → 422 detail codes `id_mismatch ends_before_starts event_in_past
+  too_many_offers duplicate_ref ref_invalid face_value_required discount_out_of_range capacity_required
+  capacity_exceeds_type window_required private_sale_invalid offer_frozen capacity_below_redeemed
+  offer_has_redemptions`; warnings `ends_at_defaulted` (+6 h), `guestlist_capacity_ignored`, `timezone_mismatch`;
+  `applySnapshot(producer, eventosEventId, raw)` ONE tx: `stale_version` 409 when version < stored (equal =
+  re-apply), 409 `conflict` for staff-managed/finished/cancelled, event create (DRAFT, source EVENTOS, cityId from
+  producer, scanner creds minted, PIN discarded — EventOS scanner is the door) or update, offers upsert by
+  `externalRef` (name = ticket type name + "· d% off" / "· guest list"; FULL/DISCOUNT → CAPPED, GUESTLIST →
+  TIME_WINDOW via `windowUntilFromLocalTime` + capacity ignored; `faceValueCents` stored for FULL too so the
+  rule can recompute; +1 extra key cost = the offer's key cost (same value → same keys), +1 cash DISCOUNT only;
+  private sale opens-at from `publishedAt` when already published; live offers KEEP their keyCost unless a
+  staff override exists; `paymentMode` always PRODUCER_COLLECTS), missing offers deleted only with zero
+  redemptions (waitlist rows too), returns `OfferResult[]` w/ per-status counters), `status.ts` (`publish`
+  (DRAFT → `setEventStatus`, "no offers" → 422 `no_offers`; always clears `pausedAt`), `pause` (= `pausedAt`,
+  status stays PUBLISHED), `cancel` (DRAFT direct / PUBLISHED via setEventStatus + `refundEventRedemptions` —
+  keys only since PRODUCER_COLLECTS redemptions have no PaymentIntent; idempotent, returns `{redemptions, keys}`)),
+  `sales.ts` (`offerCountersByStatus`, `toOfferResult`, `salesForEvent(eventId, {since, cursor, limit})` ordered
+  updatedAt/id asc w/ base64url cursor; `RedemptionView.member.email` ONLY when `cashCents > 0` (decision C),
+  displayName via `inviteeLabel`), `connect.ts` (`connectProducer` zod → 409 `producer_bound` on a different
+  org, rotates `whsec_` secret, sets `usesEventOS`, returns contract/producer+city/pricing/limits/webhookSecret/
+  scannerPhotoTtlHours; `webhookSecrets(producer, now)` current+previous decrypted; `unbindProducer`), `photo.ts`
+  (`photoSignature(secret, ticketId, exp)` HMAC hex, `verifyPhotoSignature(secrets…)` ok|expired|bad timing-safe,
+  `signedPhotoUrl(producer, ticketId, endsAt)` exp = endsAt + ttl, `loadTicketPhoto` via media storage `get`),
+  `override.ts` (`setOfferKeyCostOverride(offerId, n|null)` ADMIN — recomputes keyCost + +1 keys; existing
+  redemptions keep what they paid). Routes `src/app/api/partner/v1/`: `connect` POST, `pricing` GET,
+  `events/[eventosEventId]` PUT, `…/publish|pause|cancel` POST (all idempotent), `…/sales` GET, `…/settlement` GET
+  (always 404 `no_settlement`), `tickets/[ticketId]/photo` GET (query-signed, no bearer, 403/410/404, no-store).
+  Redemption: `RefusalReason` gained `EVENT_PAUSED` (`checkEligibility` right after the PUBLISHED check;
+  `joinWaitlist` too); `/app` listing adds `pausedAt: null`. Domain guards: `updateEvent/addOffer/updateOffer/
+  deleteOffer` refuse `source = EVENTOS` ("managed in EventOS"). Backoffice: producer page "EventOS connection"
+  card (key prefix/created/last used, bound org, webhook URL; ADMIN generate key → `?apiKey=` shown once,
+  revoke, "Disconnect EventOS" = revoke + unbind), event page for EVENTOS events = banner "Managed in EventOS by
+  {producer}" (snapshot version + external id), read-only details, no offer forms/add/delete/duplicate/
+  unpublish, "Emergency cancel" only, per-offer ADMIN key-cost override form (`overrideKeyCostAction`),
+  scanner card copy says the EventOS scanner is the door; `EventOS` badge on event lists. Tests
+  `tests/partners-api.test.ts` (12 → suite 127; routes called directly with `Request` objects): key format/
+  verify/revoke/lastUsedAt, pricing table (€15→15, 40 % of €20→8, floor 2, guest list 10, override),
+  rate-limit window, 401 codes, connect bind/rotate/previous-secret window/producer_bound/422, every
+  validation code + "422 applies nothing", upsert fields (window UTC, +1 keys, face value, private sale),
+  idempotency replay + mismatch, stale_version, publish/no_offers/404/pause → `EVENT_PAUSED` + listing filter →
+  publish clears, frozen/offer_has_redemptions/capacity grows/key cost sticks through a pricing change/staff
+  override wins/staff edit refused, sales email rule + counters + cursor + since, settlement 404, photo test
+  vector + route ok/403/410/404, cancel refunds keys (ledger) idempotently + later push/publish 409. NOT in 11
+  (Phase 12/13): outbound events to EventOS, `externalOrderId/externalTicketId` (sales returns null), external
+  check-ins, producer-collects payment flow, no-show grace.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE
