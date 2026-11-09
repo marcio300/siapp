@@ -626,6 +626,14 @@ model Redemption {
   stripeCheckoutSessionId String?        @unique // discounted tickets pay through Checkout; webhook completes
   stripeRefundId        String?
   paymentExpiresAt      DateTime? // PENDING_PAYMENT hold expiry
+  // Producer-collects (EventOS) discounted tickets: the QR payload is minted at
+  // redemption so EventOS can adopt it as its ticket token; the Ticket row is
+  // created when EventOS reports `order.paid` (docs/EVENTOS_INTEGRATION.md).
+  qrPayload             String?          @unique
+  externalOrderId       String? // EventOS order holding/paid for this redemption
+  externalPayUrl        String? // signed EventOS checkout link (valid until paymentExpiresAt)
+  externalRefundedAt    DateTime? // EventOS confirmed the cash refund
+  externalRefundError   String? // EventOS could not refund (staff follow-up)
   cancelDeadlineAt      DateTime // startsAt − cancellation window
   cancelledAt           DateTime?
   checkedInAt           DateTime?
