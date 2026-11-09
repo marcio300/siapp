@@ -13,6 +13,7 @@
     { "path": "/api/cron/expire-pending-payments", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/event-reminders", "schedule": "35 * * * *" },
     { "path": "/api/cron/keys-expiring", "schedule": "45 * * * *" },
-    { "path": "/api/cron/tourist-expiring", "schedule": "55 * * * *" }
+    { "path": "/api/cron/tourist-expiring", "schedule": "55 * * * *" },
+    { "path": "/api/cron/partner-outbox", "schedule": "* * * * *" }
   ]
 }

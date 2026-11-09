@@ -5,6 +5,7 @@ import { sendEventReminders, sendKeysExpiringNotices, sendTouristExpiringNotices
 import { expirePendingPayments, expireWaitlistClaims, markNoShows } from "@/domain/redemption/lifecycle";
 import { vestReferrals } from "@/domain/referrals/vesting";
 import { settleEvents } from "@/domain/settlement/settle";
+import { flushOutbound } from "@/domain/partners-api/outbox";
 
 /**
  * Every scheduled job, by the name Vercel Cron calls it with
@@ -41,6 +42,8 @@ export const CRON_JOBS = {
   "keys-expiring": () => sendKeysExpiringNotices(),
   /** hourly — tourist passes ending within 24 h */
   "tourist-expiring": () => sendTouristExpiringNotices(),
+  /** every minute — signed messages to producers' EventOS (retries with backoff) */
+  "partner-outbox": () => flushOutbound(),
 } as const satisfies Record<string, () => Promise<unknown>>;
 
 export function isCronJobName(name: string): name is CronJobName {

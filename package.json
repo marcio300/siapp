@@ -30,6 +30,7 @@
     "jobs:event-reminders": "tsx scripts/jobs/event-reminders.ts",
     "jobs:keys-expiring": "tsx scripts/jobs/keys-expiring.ts",
     "jobs:tourist-expiring": "tsx scripts/jobs/tourist-expiring.ts",
+    "jobs:partner-outbox": "tsx scripts/jobs/partner-outbox.ts",
     "e2e": "playwright test"
   },
   "dependencies": {
