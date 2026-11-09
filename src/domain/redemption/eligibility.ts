@@ -20,7 +20,7 @@ export interface EligibilityInput {
   tierCode: TierCode;
   isPaid: boolean;
   balanceTotal: number;
-  offer: Offer & { event: { status: string; startsAt: Date; publishedAt: Date | null } };
+  offer: Offer & { event: { status: string; startsAt: Date; publishedAt: Date | null; pausedAt?: Date | null } };
   /** Redemptions in counting statuses on this offer (all members). */
   used: number;
   /** Live waitlist claims held by OTHER members (reserved seats). */
@@ -57,6 +57,8 @@ export function checkEligibility(i: EligibilityInput): Eligibility {
 
   // 3. open (checked before tier so the member sees the real blocker first)
   if (offer.event.status !== "PUBLISHED") return refuse("EVENT_NOT_OPEN", "This event isn't open.");
+  // Partner "pause" (EventOS): hidden from members, no new redemptions, live ones untouched.
+  if (offer.event.pausedAt) return refuse("EVENT_PAUSED", "This event is paused right now — check back soon.");
   const from = offer.redeemFrom ?? offer.event.publishedAt ?? now;
   const until = offer.redeemUntil ?? offer.event.startsAt;
   if (now < from) return refuse("OFFER_NOT_OPEN", "Not open yet.", { opensAt: from.toISOString() });

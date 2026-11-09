@@ -209,6 +209,7 @@ export async function joinWaitlist(memberId: string, offerId: string, opts: Opts
   const now = opts.now ?? new Date();
   const offer = await db.offer.findUnique({ where: { id: offerId }, include: { event: true } });
   if (!offer || offer.event.status !== "PUBLISHED") throw new RedemptionError("EVENT_NOT_OPEN", "This event isn't open.");
+  if (offer.event.pausedAt) throw new RedemptionError("EVENT_PAUSED", "This event is paused right now.");
   if (offer.allocationType !== "CAPPED" || offer.capacity === null) throw new RedemptionError("BAD_STATE", "This offer has no waitlist.");
   if (now > (offer.redeemUntil ?? offer.event.startsAt)) throw new RedemptionError("OFFER_CLOSED", "Redemptions for this one have closed.");
   const used = await db.redemption.count({ where: { offerId, status: { in: ["PENDING_PAYMENT", "HELD", "ACTIVE", "CHECKED_IN"] } } });

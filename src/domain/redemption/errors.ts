@@ -7,6 +7,7 @@ export type RefusalReason =
   | "BANNED"
   | "NOT_VERIFIED"
   | "EVENT_NOT_OPEN"
+  | "EVENT_PAUSED"
   | "OFFER_NOT_OPEN"
   | "OFFER_CLOSED"
   | "TIER_NOT_ALLOWED"

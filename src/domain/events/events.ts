@@ -89,6 +89,7 @@ export async function updateEvent(id: string, raw: EventInput, opts: Opts = {}) 
   const db = opts.db ?? defaultPrisma;
   const existing = await db.event.findUnique({ where: { id } });
   if (!existing) throw new EventError("Event not found");
+  if (existing.source === "EVENTOS") throw new EventError("This event is managed in EventOS by the producer — edit it there");
   if (existing.status === "FINISHED" || existing.status === "CANCELLED") throw new EventError(`A ${existing.status.toLowerCase()} event can't be edited`);
   const { input, producer, startsAt, endsAt } = await parseEvent(db, raw);
   if (producer.cityId !== existing.cityId) throw new EventError("The producer must be in the event's city");

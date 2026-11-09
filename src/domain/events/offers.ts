@@ -58,6 +58,7 @@ async function buildOfferData(db: PrismaClient, eventId: string, raw: OfferInput
 export async function addOffer(eventId: string, raw: OfferInput, opts: Opts = {}) {
   const db = opts.db ?? defaultPrisma;
   const { event, data } = await buildOfferData(db, eventId, raw);
+  if (event.source === "EVENTOS") throw new EventError("Offers of an EventOS event are configured by the producer in EventOS");
   if (event.status === "FINISHED" || event.status === "CANCELLED") throw new EventError(`A ${event.status.toLowerCase()} event can't take new offers`);
   return db.offer.create({ data: { ...data, eventId } });
 }
@@ -66,6 +67,7 @@ export async function updateOffer(offerId: string, raw: OfferInput, opts: Opts =
   const db = opts.db ?? defaultPrisma;
   const existing = await db.offer.findUnique({ where: { id: offerId }, include: { event: true } });
   if (!existing) throw new EventError("Offer not found");
+  if (existing.event.source === "EVENTOS") throw new EventError("Offers of an EventOS event are configured by the producer in EventOS — staff may only override the key cost");
   if (existing.event.status === "FINISHED" || existing.event.status === "CANCELLED") throw new EventError("This event is closed");
   const { data } = await buildOfferData(db, existing.eventId, raw);
   const redeemed = await db.redemption.count({ where: { offerId, status: { in: ["PENDING_PAYMENT", "HELD", "ACTIVE", "CHECKED_IN"] } } });
@@ -83,6 +85,8 @@ export async function updateOffer(offerId: string, raw: OfferInput, opts: Opts =
 
 export async function deleteOffer(offerId: string, opts: Opts = {}) {
   const db = opts.db ?? defaultPrisma;
+  const offer = await db.offer.findUnique({ where: { id: offerId }, include: { event: { select: { source: true } } } });
+  if (offer?.event.source === "EVENTOS") throw new EventError("Offers of an EventOS event are removed by the producer in EventOS");
   const redemptions = await db.redemption.count({ where: { offerId } });
   if (redemptions > 0) throw new EventError("This offer has redemptions and can't be deleted");
   await db.waitlistEntry.deleteMany({ where: { offerId } });

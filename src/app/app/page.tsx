@@ -25,6 +25,7 @@ export default async function MemberHome({ searchParams }: { searchParams: Promi
   const events = await prisma.event.findMany({
     where: {
       status: "PUBLISHED",
+      pausedAt: null,
       ...(member.cityId ? { cityId: member.cityId } : {}),
       endsAt: { gte: now },
       startsAt: { lte: horizon },
