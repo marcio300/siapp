@@ -155,7 +155,9 @@ export async function flushOutbound(opts: FlushOpts = {}): Promise<FlushReport> 
     try {
       const res = await fetchImpl(p.eventosWebhookUrl, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-siapp-signature": signatureHeader(secret, body, now), "x-request-id": row.id },
+        // Signed with the WALL clock, never the caller's logical `now`: EventOS rejects |t − now| > 300 s, and
+        // jobs such as markNoShows legitimately run with a shifted clock (found in the 2026-11-09 e2e run).
+        headers: { "content-type": "application/json", "x-siapp-signature": signatureHeader(secret, body), "x-request-id": row.id },
         body,
       });
       status = res.status;

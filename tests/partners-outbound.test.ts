@@ -226,6 +226,18 @@ describe("partner outbound + external check-ins (Phase 12)", () => {
     respond = () => ({ status: 200, body: { ok: true } });
   });
 
+  it("outbound signatures use the wall clock even when the job runs with a shifted `now` (EventOS tolerance is 300 s)", async () => {
+    const producer = await prisma.producer.findFirstOrThrow({ where: { eventosOrgId: { not: null } } });
+    const row = await queueOutbound(producer, "sales.updated", { siappEventId: "x", eventosEventId: EV }, { dedupeKey: `sales:wallclock-${Date.now()}` });
+    const shifted = new Date(Date.now() + 4 * DAY);
+    const before = captured.length;
+    await flushOutbound({ now: shifted, ids: [row!.id] });
+    const header = String(captured[before]?.headers["x-siapp-signature"] ?? "");
+    const t = Number(header.match(/t=(\d+)/)?.[1]);
+    expect(Math.abs(t - Math.floor(Date.now() / 1000))).toBeLessThan(10);
+    expect(Math.abs(t - Math.floor(shifted.getTime() / 1000))).toBeGreaterThan(300);
+  });
+
   it("sales.updated coalesces to one pending row per event, next one waits 30 s after a send", async () => {
     const t0 = new Date(Date.now() + 10 * 60_000); // past every pending backoff so the flush isolates this row
     await prisma.outboundEvent.deleteMany({ where: { dedupeKey: `sales:${siappEvent2Id}` } });
