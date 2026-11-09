@@ -182,6 +182,6 @@ describe("notifications (spec §16) + cron", () => {
     const { readFileSync } = await import("node:fs");
     const vercel = JSON.parse(readFileSync("vercel.json", "utf8")) as { crons: { path: string; schedule: string }[] };
     for (const c of vercel.crons) expect(isCronJobName(c.path.replace("/api/cron/", ""))).toBe(true);
-    expect(new Set(vercel.crons.map((c) => c.path)).size).toBe(12);
+    expect(new Set(vercel.crons.map((c) => c.path)).size).toBe(13);
   });
 });
