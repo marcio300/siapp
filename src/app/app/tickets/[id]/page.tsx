@@ -19,6 +19,8 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const now = new Date();
   const qr = r.ticket ? await QRCode.toDataURL(r.ticket.qrPayload, { width: 560, margin: 1 }) : null;
   const canCancel = (r.status === "ACTIVE" && now <= r.cancelDeadlineAt) || r.status === "PENDING_PAYMENT" || r.status === "HELD";
+  // EventOS events: the producer's scanner knows the ticket once EventOS has acknowledged the mirror.
+  const preparingForDoor = r.event.source === "EVENTOS" && r.offer.type !== "DISCOUNT_TICKET" && r.status === "ACTIVE" && !!r.ticket && !r.ticket.externalTicketId;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-5 px-6 py-8">
@@ -51,9 +53,10 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
               <div>
                 <p className="font-semibold">{r.ticket!.memberName}</p>
                 {r.ticket!.plusOneName && <p className="text-sm text-ink-dark-muted">+1 {r.ticket!.plusOneName}</p>}
-                <p className="text-xs text-ink-dark-muted">{r.status === "CHECKED_IN" ? `scanned ${r.checkedInAt ? formatDate(r.checkedInAt, tz) : ""}` : "valid"}</p>
+                <p className="text-xs text-ink-dark-muted">{r.status === "CHECKED_IN" ? `scanned ${r.checkedInAt ? formatDate(r.checkedInAt, tz) : ""}` : preparingForDoor ? "preparing for the door" : "valid"}</p>
               </div>
             </div>
+            {preparingForDoor && <p className="mt-3 text-xs text-ink-dark-muted">the venue&apos;s scanner is being told about your ticket — give it a moment before you reach the door.</p>}
           </section>
         )
       ) : r.status === "PENDING_PAYMENT" ? (

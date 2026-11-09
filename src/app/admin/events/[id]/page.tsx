@@ -10,7 +10,7 @@ import { Badge, statusTone } from "@/components/backoffice/badge";
 import { PageHeader, SectionTitle } from "@/components/backoffice/page-header";
 import { KeyIcon } from "@/components/key-icon";
 import { EmptyRow, Table, Td, Th } from "@/components/backoffice/table";
-import { addOfferAction, deleteOfferAction, duplicateEventAction, overrideKeyCostAction, regeneratePinAction, setEventStatusAction, updateEventAction, updateOfferAction } from "../actions";
+import { addOfferAction, deleteOfferAction, duplicateEventAction, overrideKeyCostAction, regeneratePinAction, retryOutboundAction, setEventStatusAction, updateEventAction, updateOfferAction } from "../actions";
 import { EventForm } from "../event-form";
 import { OfferForm } from "../offer-form";
 
@@ -31,6 +31,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const redemptions = await prisma.redemption.findMany({ where: { eventId: event.id }, include: { member: { select: { id: true, name: true, email: true } }, offer: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 300 });
   const scans = await prisma.scan.findMany({ where: { eventId: event.id }, include: { ticket: { select: { memberName: true, plusOneName: true, redemption: { select: { memberId: true } } } } }, orderBy: { scannedAt: "desc" }, take: 100 });
   const scanTotals = { ok: scans.filter((s) => s.result === "OK").length, disputed: scans.filter((s) => s.disputed).length };
+  const outbound = managedInEventOS ? await prisma.outboundEvent.findMany({ where: { eventId: event.id }, orderBy: { createdAt: "desc" }, take: 50 }) : [];
 
   return (
     <>
@@ -107,16 +108,33 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           )}
         </div>
         <div className="card p-5 text-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Scanner login</p>
-          <p className="mt-2">Code <span className="font-mono text-base font-semibold">{event.scannerCode}</span></p>
-          <p className="text-xs text-ink-dark-muted">{managedInEventOS ? "The producer scans with the EventOS scanner; this login is the fallback — regenerate a PIN to use it." : "PIN: shown once at creation. Hand both to the door."}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <form action={regeneratePinAction}>
-              <input type="hidden" name="id" value={event.id} />
-              <button className="btn btn-outline !py-1 text-xs">Regenerate PIN</button>
-            </form>
-            <Link href="/scan" target="_blank" className="btn btn-outline !py-1 text-xs">Open scanner ↗</Link>
-          </div>
+          {managedInEventOS ? (
+            <details>
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Scanner login · fallback (the producer scans in EventOS)</summary>
+              <p className="mt-2">Code <span className="font-mono text-base font-semibold">{event.scannerCode}</span></p>
+              <p className="text-xs text-ink-dark-muted">The producer's EventOS scanner is the door; this login is the fallback — regenerate a PIN to use it.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <form action={regeneratePinAction}>
+                  <input type="hidden" name="id" value={event.id} />
+                  <button className="btn btn-outline !py-1 text-xs">Regenerate PIN</button>
+                </form>
+                <Link href="/scan" target="_blank" className="btn btn-outline !py-1 text-xs">Open scanner ↗</Link>
+              </div>
+            </details>
+          ) : (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-dark-muted">Scanner login</p>
+              <p className="mt-2">Code <span className="font-mono text-base font-semibold">{event.scannerCode}</span></p>
+              <p className="text-xs text-ink-dark-muted">PIN: shown once at creation. Hand both to the door.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <form action={regeneratePinAction}>
+                  <input type="hidden" name="id" value={event.id} />
+                  <button className="btn btn-outline !py-1 text-xs">Regenerate PIN</button>
+                </form>
+                <Link href="/scan" target="_blank" className="btn btn-outline !py-1 text-xs">Open scanner ↗</Link>
+              </div>
+            </>
+          )}
           <p className="mt-2 text-xs text-ink-dark-muted">{counters.size > 0 ? `${Array.from(counters.values()).reduce((n, c) => n + c.checkedIn, 0)} checked in` : "No offers yet"}{scanTotals.disputed > 0 ? ` · ${scanTotals.disputed} disputed` : ""}</p>
           {event.imageUrls[0] && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -250,6 +268,44 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           </tbody>
         </Table>
       </div>
+      {managedInEventOS && (
+        <div className="mt-8">
+          <SectionTitle>Messages to EventOS · last {outbound.length}</SectionTitle>
+          <Table>
+            <thead>
+              <tr>
+                <Th>When</Th>
+                <Th>Type</Th>
+                <Th>Status</Th>
+                <Th>Attempts</Th>
+                <Th>Last error</Th>
+                <Th>Retry</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {outbound.length === 0 && <EmptyRow colSpan={6}>Nothing sent yet.</EmptyRow>}
+              {outbound.map((o) => (
+                <tr key={o.id}>
+                  <Td className="whitespace-nowrap text-ink-dark-muted">{formatDate(o.createdAt, tz)}</Td>
+                  <Td className="font-mono text-xs">{o.type}</Td>
+                  <Td><Badge tone={o.status === "SENT" ? "ok" : o.status === "PENDING" ? "warn" : "red"}>{o.status.toLowerCase()}</Badge></Td>
+                  <Td className="text-ink-dark-muted">{o.attempts}{o.status === "PENDING" ? ` · next ${formatDate(o.nextAttemptAt, tz)}` : ""}</Td>
+                  <Td className="max-w-xs text-xs text-ink-dark-muted"><span className="block truncate" title={o.lastError ?? undefined}>{o.lastError ?? "—"}</span></Td>
+                  <Td>
+                    {o.status === "FAILED" && (
+                      <form action={retryOutboundAction}>
+                        <input type="hidden" name="eventId" value={event.id} />
+                        <input type="hidden" name="id" value={o.id} />
+                        <button className="btn btn-outline !py-1 text-xs">Retry</button>
+                      </form>
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+      )}
     </>
   );
 }

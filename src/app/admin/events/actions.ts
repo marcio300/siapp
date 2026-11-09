@@ -18,7 +18,7 @@ import {
   type OfferInput,
 } from "@/domain/events";
 import { refundEventRedemptions } from "@/domain/redemption/lifecycle";
-import { setOfferKeyCostOverride } from "@/domain/partners-api";
+import { flushOutbound, retryOutbound, setOfferKeyCostOverride } from "@/domain/partners-api";
 
 function eventInput(fd: FormData): EventInput {
   return {
@@ -172,4 +172,14 @@ export async function deleteOfferAction(fd: FormData): Promise<void> {
     fail(e, `/admin/events/${eventId}#offers`);
   }
   redirect(`/admin/events/${eventId}?offer=deleted#offers`);
+}
+
+/** OPS: put a FAILED message to EventOS back in the queue and deliver it now. */
+export async function retryOutboundAction(fd: FormData): Promise<void> {
+  await requireStaff("OPS");
+  const eventId = text(fd, "eventId") ?? "";
+  const id = text(fd, "id") ?? "";
+  const queued = await retryOutbound(id);
+  if (queued) await flushOutbound({ ids: [id] });
+  redirect(`/admin/events/${eventId}?saved=1`);
 }
