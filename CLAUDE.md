@@ -530,7 +530,7 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   bookkeeping; settlement 0/PAID/NOTHING_OWED with a scanned producer-collects ticket; SIAPP_COLLECTS → Stripe
   session, no payload, no EventOS call. Test gotcha: `getBalance` deltas need `getMembership()` called once
   first (the lazy FREE subscription grants 2 plan keys on first touch); `sales.updated` is coalesced per event,
-  so don't assert a fresh one right after another message.
+  so don't assert a fresh one right after another message. **E2E VERIFIED 2026-11-09 against a local EventOS over real HTTP** (report: EventOS `docs/SIAPP_E2E_Run_2026-11-09.md`; SIAPP-side runner `scripts/e2e-eventos/` = `pg-keep.ts` (embedded PG on 5436 — dev-local hardcodes 5433 which EventOS uses), `setup-db.ts`, `cli.ts` producer/member/redeem/pay/scan/cancel/eligibility/noshow/state/outbound/sql): connect, snapshot + publish, FULL → mirror ticket, both scanners, DISCOUNT +1 `order.create` → `order.paid`, `order.expired`, cancel → `refund.succeeded`, sales, pause/publish, no-show reversal all matched the contract. One bug fixed: `flushOutbound` signed with the caller's logical `now` (a job with a shifted clock → EventOS 401 `stale`) — now the wall clock, test added (suite 149). Also: the Stripe webhook route used `??` on `STRIPE_SECRET_KEY`, so an EMPTY value in `.env` made the SDK throw → every webhook 400 (now `||`). `next dev` works in this cloud sandbox.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

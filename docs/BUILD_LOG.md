@@ -814,6 +814,14 @@ producers keep the Stripe flow untouched.
 - Events whose offers are all producer-collects still get a settlement row (0, PAID, `NOTHING_OWED`)
   so the hourly job never revisits them; the UI relabels it.
 
+**E2E verified (2026-11-09)**
+
+- First real run against a local EventOS, both apps over HTTP (EventOS `docs/SIAPP_E2E_Run_2026-11-09.md`).
+  Every Phase 11–13 message matched the contract. One fix: outbound signatures now use the wall clock
+  (`flushOutbound` used the job's logical `now`; a shifted clock produced a 401 `stale` on EventOS).
+  Second fix: the Stripe webhook route tolerates an empty `STRIPE_SECRET_KEY` (`||`, not `??`).
+  Runner: `scripts/e2e-eventos/`.
+
 **Open**
 
 - Phase 12's outbox retention. EventOS E3 must implement `order.create` + the `/payment` reports; the
