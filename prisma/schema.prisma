@@ -95,6 +95,18 @@ enum ScanResult {
   INVALID
 }
 
+/// Which door recorded a scan: our scanner, or the producer's EventOS scanner reporting in.
+enum ScanSource {
+  SIAPP
+  EVENTOS
+}
+
+enum OutboundStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum WaitlistStatus {
   WAITING
   NOTIFIED
@@ -457,8 +469,36 @@ model Producer {
   settlements Settlement[]
   apiKeys     ProducerApiKey[]
   idempotency PartnerIdempotency[]
+  outbound    OutboundEvent[]
 
   @@index([cityId])
+}
+
+/// Signed message to a producer's EventOS (contract docs/SIAPP_API.md §4): `id` is the envelope id
+/// (ULID), the row is the outbox — PENDING until EventOS answers 2xx, retried with backoff, FAILED
+/// after a final 4xx or the last attempt. `dedupeKey` coalesces `sales.updated` to one row per event.
+model OutboundEvent {
+  id             String         @id
+  producerId     String
+  eventId        String?
+  type           String
+  payload        Json
+  dedupeKey      String?        @unique
+  status         OutboundStatus @default(PENDING)
+  attempts       Int            @default(0)
+  nextAttemptAt  DateTime       @default(now())
+  lastError      String?
+  responseStatus Int?
+  responseBody   Json?
+  sentAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  producer Producer @relation(fields: [producerId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([producerId, createdAt])
+  @@index([eventId, createdAt])
 }
 
 /// Bearer key an EventOS organization uses on /api/partner/v1 (`siapp_pk_<8>_<32>`). One active
@@ -613,6 +653,8 @@ model Ticket {
   memberName       String
   photoSnapshotUrl String?
   plusOneName      String?
+  externalTicketId String? // EventOS mirror ticket (set when `redemption.activated` is acknowledged)
+  externalOrderId  String?
   issuedAt         DateTime @default(now())
 
   redemption Redemption @relation(fields: [redemptionId], references: [id], onDelete: Cascade)
@@ -625,7 +667,9 @@ model Scan {
   eventId    String
   result     ScanResult
   rawPayload String?
-  scannedBy  String? // scanner session / staff id
+  scannedBy  String? // scanner session / staff id — "eventos:{gate}" for the producer's scanner
+  source     ScanSource @default(SIAPP)
+  externalId String?    @unique // EventOS check-in id (idempotency for reported scans)
   disputed   Boolean    @default(false)
   disputeNote String?
   scannedAt  DateTime   @default(now())
