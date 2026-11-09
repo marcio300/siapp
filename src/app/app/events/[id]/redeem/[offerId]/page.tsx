@@ -24,6 +24,9 @@ export default async function RedeemPage({ params }: { params: Promise<{ id: str
   const b = breakdown(base.keyCost);
   const tz = offer.event.city.timezone;
   const cancelDeadline = new Date(offer.event.startsAt.getTime() - (offer.cancellationWindowHours ?? 24) * 3_600_000);
+  // EventOS producers collect discounted-ticket cash themselves (CLAUDE.md rule 6): the member pays them on their checkout.
+  const producerCollects = base.cashCents > 0 && offer.paymentMode === "PRODUCER_COLLECTS";
+  const producerName = offer.event.producer.name;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-8">
@@ -57,14 +60,18 @@ export default async function RedeemPage({ params }: { params: Promise<{ id: str
         )}
         <p className="text-xs text-ink-muted">
           cancel for a full refund until {formatDate(cancelDeadline, tz)}. after that it&apos;s final — a no-show costs the keys.
-          {base.cashCents > 0 ? " card payment opens next; your spot is held for 10 minutes." : ""}
+          {producerCollects ? ` you pay ${producerName} on the next screen; your spot is held while you do.` : base.cashCents > 0 ? " card payment opens next; your spot is held for 10 minutes." : ""}
         </p>
-        {base.cashCents > 0 && (
+        {producerCollects ? (
           <p className="text-xs text-ink-muted">
-            you&apos;re paying SIAPP, the seller of record, on behalf of {offer.event.producer.name}: we take the payment, issue the ticket and handle refunds; the producer gets its share after the door scans you. price includes VAT. <Link href="/legal/terms" className="underline">terms</Link>.
+            you&apos;re paying {producerName}, the seller of record, on their own checkout: they take the payment, issue the invoice and handle cash refunds; SIAPP only spends your keys and holds your spot. your name and email go to them as the buyer. price includes VAT. <Link href="/legal/terms" className="underline">terms</Link>.
           </p>
-        )}
-        <button className="btn btn-primary w-full">{base.cashCents > 0 ? `Pay ${formatMoney(base.cashCents)} and get in` : "Redeem — I'm in"}</button>
+        ) : base.cashCents > 0 ? (
+          <p className="text-xs text-ink-muted">
+            you&apos;re paying SIAPP, the seller of record, on behalf of {producerName}: we take the payment, issue the ticket and handle refunds; the producer gets its share after the door scans you. price includes VAT. <Link href="/legal/terms" className="underline">terms</Link>.
+          </p>
+        ) : null}
+        <button className="btn btn-primary w-full">{producerCollects ? `Continue to pay ${formatMoney(base.cashCents)} at ${producerName}` : base.cashCents > 0 ? `Pay ${formatMoney(base.cashCents)} and get in` : "Redeem — I'm in"}</button>
       </form>
     </main>
   );

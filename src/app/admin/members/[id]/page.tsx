@@ -345,10 +345,11 @@ export default async function MemberPage({
               <Th>Status</Th>
               <Th align="right">Keys</Th>
               <Th>+1</Th>
+              <Th>Cash</Th>
             </tr>
           </thead>
           <tbody>
-            {tickets.length === 0 && <EmptyRow colSpan={5}>No tickets yet.</EmptyRow>}
+            {tickets.length === 0 && <EmptyRow colSpan={6}>No tickets yet.</EmptyRow>}
             {tickets.map((t) => (
               <tr key={t.id}>
                 <Td><Link href={`/admin/events/${t.event.id}`} className="hover:text-red">{t.event.title}</Link><div className="text-xs text-ink-dark-muted">{formatDate(t.event.startsAt, tz)}</div></Td>
@@ -356,6 +357,17 @@ export default async function MemberPage({
                 <Td><Badge tone={statusTone(t.status)}>{t.status.toLowerCase().replace("_", " ")}</Badge></Td>
                 <Td align="right">{t.keyCost}</Td>
                 <Td className="text-ink-dark-muted">{t.plusOneName ?? "—"}</Td>
+                <Td className="text-xs">
+                  {t.cashCents === 0 ? <span className="text-ink-dark-muted">—</span> : t.externalRefundError ? (
+                    <span className="text-red" title={t.externalRefundError}>refund failed at producer — follow up</span>
+                  ) : t.externalRefundedAt ? (
+                    <span className="text-ink-dark-muted">refunded by producer</span>
+                  ) : t.externalOrderId ? (
+                    <span className="text-ink-dark-muted">paid to producer · {t.externalOrderId.slice(0, 10)}…</span>
+                  ) : (
+                    <span className="text-ink-dark-muted">via SIAPP</span>
+                  )}
+                </Td>
               </tr>
             ))}
           </tbody>

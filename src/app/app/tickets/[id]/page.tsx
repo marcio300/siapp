@@ -13,7 +13,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const member = await requireOnboardedMember("/app/tickets");
   const { id } = await params;
   const sp = await searchParams;
-  const r = await prisma.redemption.findUnique({ where: { id }, include: { event: { include: { city: true } }, offer: true, ticket: true } });
+  const r = await prisma.redemption.findUnique({ where: { id }, include: { event: { include: { city: true, producer: { select: { name: true } } } }, offer: true, ticket: true } });
   if (!r || r.memberId !== member.id) notFound();
   const tz = r.event.city.timezone;
   const now = new Date();
@@ -21,6 +21,9 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
   const canCancel = (r.status === "ACTIVE" && now <= r.cancelDeadlineAt) || r.status === "PENDING_PAYMENT" || r.status === "HELD";
   // EventOS events: the producer's scanner knows the ticket once EventOS has acknowledged the mirror.
   const preparingForDoor = r.event.source === "EVENTOS" && r.offer.type !== "DISCOUNT_TICKET" && r.status === "ACTIVE" && !!r.ticket && !r.ticket.externalTicketId;
+  // Producer-collects: the member pays the producer on EventOS; the pay button re-opens (or re-requests) that checkout.
+  const producerCollects = r.offer.paymentMode === "PRODUCER_COLLECTS" && r.cashCents > 0;
+  const producerName = r.event.producer.name;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-5 px-6 py-8">
@@ -30,7 +33,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
       </div>
       {sp.error && <Notice tone="error">{sp.error}</Notice>}
       {sp.new && <Notice tone="ok">you&apos;re in. show this at the door with your face.</Notice>}
-      {sp.paid && r.status === "PENDING_PAYMENT" && <Notice tone="ok">payment received — your ticket appears here as soon as Stripe confirms (seconds).</Notice>}
+      {sp.paid && r.status === "PENDING_PAYMENT" && <Notice tone="ok">payment received — your ticket appears here as soon as {producerCollects ? producerName : "Stripe"} confirms (seconds).</Notice>}
       {sp.held && <Notice tone="ok">one moment — a human is taking a quick look at this one. your spot and keys are held meanwhile.</Notice>}
       {sp.cancelled && <Notice tone="ok">cancelled. keys are back in your wallet.</Notice>}
 
@@ -64,11 +67,12 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           <p className="font-display text-xl">pay to confirm<span className="text-red">.</span></p>
           <p className="mt-1 font-serif italic text-ink-muted">
             {r.paymentExpiresAt && r.paymentExpiresAt > now ? `your spot is held until ${formatDate(r.paymentExpiresAt, tz)}.` : "the payment window closed — the spot was released."}
+            {producerCollects && r.paymentExpiresAt && r.paymentExpiresAt > now ? ` you pay ${producerName} directly on their checkout.` : ""}
           </p>
           {r.paymentExpiresAt && r.paymentExpiresAt > now && (
             <form action={payTicketAction} className="mt-3">
               <input type="hidden" name="redemptionId" value={r.id} />
-              <button className="btn btn-primary w-full">Pay {formatMoney(r.cashCents)}</button>
+              <button className="btn btn-primary w-full">{producerCollects ? `Pay ${formatMoney(r.cashCents)} at ${producerName}` : `Pay ${formatMoney(r.cashCents)}`}</button>
             </form>
           )}
         </section>
@@ -91,7 +95,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
           </summary>
           <form action={cancelTicketAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="redemptionId" value={r.id} />
-            <p className="text-xs text-ink-muted">{r.keyCost} keys go back to your wallet{r.cashCents > 0 && r.status === "ACTIVE" ? ` and ${formatMoney(r.cashCents)} to your card` : ""}.</p>
+            <p className="text-xs text-ink-muted">{r.keyCost} keys go back to your wallet{r.cashCents > 0 && r.status === "ACTIVE" ? ` and ${formatMoney(r.cashCents)} to your card${producerCollects ? ` (refunded by ${producerName})` : ""}` : ""}.</p>
             <button className="btn border border-red/40 text-red-soft hover:bg-red/10">Yes, cancel</button>
           </form>
         </details>

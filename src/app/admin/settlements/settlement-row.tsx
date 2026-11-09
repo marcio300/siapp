@@ -7,7 +7,7 @@ import { markPaidAction, reopenAction, resendStatementAction } from "./actions";
 
 export type SettlementListRow = Settlement & {
   producer: { id: string; name: string; contactEmail: string | null };
-  event: { id: string; title: string; startsAt: Date; city: { timezone: string } };
+  event: { id: string; title: string; startsAt: Date; city: { timezone: string }; source?: "MANUAL" | "EVENTOS" };
   _count: { lines: number };
 };
 
@@ -26,7 +26,7 @@ export function SettlementRow({ s, isAdmin, back, showProducer = true }: { s: Se
         <p className="text-xs text-ink-dark-muted">{s._count.lines} scanned</p>
       </Td>
       <Td>
-        <Badge tone={s.status === "PAID" ? "ok" : "warn"}>{s.status === "PAID" ? (s.amountCents === 0 ? "nothing owed" : "paid") : "open"}</Badge>
+        <Badge tone={s.status === "PAID" ? "ok" : "warn"}>{s.status === "PAID" ? (s.amountCents === 0 ? (s.event.source === "EVENTOS" ? "collected by producer" : "nothing owed") : "paid") : "open"}</Badge>
         {s.status === "PAID" && s.amountCents > 0 && <p className="text-xs text-ink-dark-muted">{s.paidAt ? formatDateOnly(s.paidAt, tz) : ""} · {s.reference}</p>}
       </Td>
       <Td className="text-xs text-ink-dark-muted">{s.emailedAt ? `sent ${formatDate(s.emailedAt, tz)}` : s.producer.contactEmail ? "not sent" : "no contact email"}</Td>

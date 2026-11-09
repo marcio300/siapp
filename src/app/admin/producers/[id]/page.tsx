@@ -22,7 +22,7 @@ export default async function ProducerPage({ params, searchParams }: { params: P
   const cities = await prisma.city.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
   const settlements = await prisma.settlement.findMany({
     where: { producerId: producer.id },
-    include: { producer: { select: { id: true, name: true, contactEmail: true } }, event: { select: { id: true, title: true, startsAt: true, city: { select: { timezone: true } } } }, _count: { select: { lines: true } } },
+    include: { producer: { select: { id: true, name: true, contactEmail: true } }, event: { select: { id: true, title: true, startsAt: true, source: true, city: { select: { timezone: true } } } }, _count: { select: { lines: true } } },
     orderBy: [{ status: "desc" }, { createdAt: "desc" }],
     take: 100,
   });

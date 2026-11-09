@@ -15,7 +15,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
   const [rows, producers, openAgg, openByProducer] = await Promise.all([
     prisma.settlement.findMany({
       where: { ...(status ? { status } : {}), ...(producerId ? { producerId } : {}) },
-      include: { producer: { select: { id: true, name: true, contactEmail: true } }, event: { select: { id: true, title: true, startsAt: true, city: { select: { timezone: true } } } }, _count: { select: { lines: true } } },
+      include: { producer: { select: { id: true, name: true, contactEmail: true } }, event: { select: { id: true, title: true, startsAt: true, source: true, city: { select: { timezone: true } } } }, _count: { select: { lines: true } } },
       orderBy: [{ status: "desc" }, { createdAt: "desc" }],
       take: 300,
     }),
@@ -31,7 +31,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
     <>
       <PageHeader
         title="Settlements"
-        subtitle="What we owe producers for scanned discounted tickets: face value minus the discount, per ticket the door actually scanned. The hourly job settles finished events and emails the statement; ADMIN marks them paid."
+        subtitle="What we owe producers for scanned discounted tickets: face value minus the discount, per ticket the door actually scanned. The hourly job settles finished events and emails the statement; ADMIN marks them paid. Producers on EventOS collect their own money — their events show as nothing owed."
         actions={
           <form action={runSettlementsAction}>
             <input type="hidden" name="back" value={back} />
