@@ -475,6 +475,62 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   ticket.checked_in; external check-in OK/replay/ALREADY_SCANNED/403/404/422/CANCELLED/INVALID + shows; grace
   (manual event finishes at +1 h, EventOS events at +7 h) + reversal at +8 h, refused at +49 h; disconnect
   key_revoked then staff (binding + secrets gone). `tests/notifications.test.ts` cron count 12 → 13.
+- **Done — Phase 13 (producer-collects payments — contract §4.2/§3.8/§5; owner decision A)**: schema —
+  `Redemption.qrPayload @unique` (minted in `redeem()` for DISCOUNT_TICKET offers with `paymentMode =
+  PRODUCER_COLLECTS`; the `Ticket` row is created only on `order.paid`), `externalOrderId`, `externalPayUrl`,
+  `externalRefundedAt`, `externalRefundError` — migration `20261109180000_producer_collects_payments`; such a
+  redemption's own window is `partner_payment_hold_minutes` (how long the member has to START paying), replaced
+  by EventOS's hold expiry once the order exists. `src/domain/partners-api/payments.ts` — `requestExternalOrder
+  (redemptionId, {db, now, fetchImpl})`: SYNCHRONOUS `order.create` command (envelope `{id: ulid, type,
+  producerId, eventosOrgId, createdAt, data}` signed with `signatureHeader` + the CURRENT secret, POST to
+  `Producer.eventosWebhookUrl`, fetch = `currentOutboundFetch()` so the outbox test seam applies; NOT an outbox
+  row — the member is waiting) with data `{redemptionId, siappEventId, eventosEventId, ticketTypeId (from the
+  ref), offerRef, qrPayload, unitPriceCents = memberPriceCents(face, d), faceValueCents, discountPercent,
+  plusOne {name, extraCashCents}|null, expectedTotalCents = cashCents, buyer {name, email} (decision C),
+  holdMinutes, memberDisplayName, photoUrl/photoExpiresAt}`; 2xx `{orderId, payUrl, holdExpiresAt,
+  totalCents?}` → stored on the redemption (`paymentExpiresAt = holdExpiresAt`); a stored link whose hold is
+  still live is returned WITHOUT a new call; terminal refusals (`ORDER_CREATE_TERMINAL` = sold_out |
+  price_mismatch | event_not_live | offer_unknown | discount_below_floor, any non-408/429 4xx carrying one of
+  those codes) → redemption CANCELLED + `refundKeys` + `sales.updated`, throw `ExternalOrderError{code,
+  terminal: true}` with member copy `ORDER_CREATE_MESSAGES` (no `redemption.cancelled` — EventOS held nothing);
+  anything else → `ExternalOrderError("unavailable")`, redemption untouched. `completeExternalPayment(producerId,
+  redemptionId, body, {db, now})` (route `POST /api/partner/v1/redemptions/[redemptionId]/payment`, idempotent
+  via `partnerRoute`; 404 unknown, 403 another producer's; zod discriminated union on `kind`): `order.paid
+  {orderId, paidAt?, amountCents?, ticket {id, qrToken}}` → `409 qr_mismatch` when `qrToken ≠ Redemption.qrPayload`
+  (a null payload adopts the token), else ONE tx conditional PENDING_PAYMENT → ACTIVE (`paymentExpiresAt` null,
+  `externalOrderId`) + Ticket `{qrPayload, signature: signQrPayload, memberName, photoSnapshotUrl, plusOneName,
+  externalTicketId, externalOrderId}` + waitlist NOTIFIED → CLAIMED, then `emailRedemptionConfirmed` +
+  `notifySalesUpdated`; non-PENDING → `{outcome: "noop", ticketId}` (replay); `order.expired` → EXPIRED +
+  `refundKeys` + `notifyNextOnWaitlist` (lazy import of lifecycle) only while PENDING; `refund.succeeded` →
+  `externalRefundedAt` (clears the error); `refund.failed` → `externalRefundError`. Returns `{redemptionStatus,
+  outcome completed|expired|recorded|noop, ticketId?}`. `lifecycle.ts`: `startRedemptionPayment(id, memberId,
+  {fetchImpl?})` is the dispatcher → `{url, via: "stripe"|"eventos"}` (PRODUCER_COLLECTS → `requestExternalOrder`;
+  terminal `ExternalOrderError` → `RedemptionError("BAD_STATE", msg, {code})`, unavailable → "payment page isn't
+  answering… spot is still held"; SIAPP_COLLECTS → Stripe Checkout exactly as before); `cancelRedemption` /
+  `refundEventRedemptions` include `offer.paymentMode` and for producer-collects ACTIVE cash SKIP Stripe and report
+  `cashRefundedCents = cashCents` (EventOS refunds on `redemption.cancelled refundCash`, then reports
+  `refund.*`); `expirePendingPayments` leaves redemptions with an `externalOrderId` alone until `paymentExpiresAt +
+  EXTERNAL_HOLD_GRACE_MS` (2 min) so EventOS's `order.expired` arrives first. `redeem.ts` mints `qrPayload` +
+  uses the partner hold for producer-collects. `settle.ts` lines require `offer.paymentMode = SIAPP_COLLECTS`
+  (an EventOS event → 0-amount PAID `NOTHING_OWED` row); `/admin/settlements` + producer page include
+  `event.source` and label it "collected by producer". `sales.ts` `RedemptionView.externalOrderId/externalTicketId`
+  filled (redemption, then ticket). `errors.ts` code `qr_mismatch`; `outbox.ts` `currentOutboundFetch()`.
+  Member app: redeem sheet (`producerCollects` → "you pay {producer} on the next screen", MoR note names the
+  producer + says name/email go to them, button "Continue to pay €X at {producer}"), ticket page ("Pay €X at
+  {producer}", confirmation copy names the producer, cancel copy "(refunded by {producer})"); admin member page
+  Tickets table gained a Cash column (via SIAPP / paid to producer · order / refunded by producer / RED
+  "refund failed at producer — follow up" w/ the error as title). Tests `tests/partners-payments.test.ts`
+  (11 → suite 148): PENDING + minted payload + no ticket + partner window; signed synchronous `order.create`
+  payload + stored order/url/hold + retry w/o a second call + no outbox row; price_mismatch/sold_out → CANCELLED
+  + keys back + typed error; 5xx + network → still PENDING, then success; `order.paid` → ACTIVE + signed ticket w/
+  external ids + email, `qr_mismatch` 409 untouched, idempotent replay header, same key other body → 422
+  `idempotency_mismatch`, repeat → noop, one ticket; 403/404/422; `order.expired` → EXPIRED + keys, replay noop,
+  late `order.paid` noop, sweep respects the grace then expires + `redemption.cancelled expired`; cancel ACTIVE
+  → keys + no Stripe + `refundCash: true`, cancel PENDING → `refundCash: false`; refund.failed/succeeded
+  bookkeeping; settlement 0/PAID/NOTHING_OWED with a scanned producer-collects ticket; SIAPP_COLLECTS → Stripe
+  session, no payload, no EventOS call. Test gotcha: `getBalance` deltas need `getMembership()` called once
+  first (the lazy FREE subscription grants 2 plan keys on first touch); `sales.updated` is coalesced per event,
+  so don't assert a fresh one right after another message.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

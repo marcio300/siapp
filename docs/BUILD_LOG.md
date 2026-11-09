@@ -756,6 +756,69 @@ EventOS scanner's check-ins (§3.7). Nothing is sent for events we manage by han
 
 **Open**
 
-- Phase 13: producer-collects payments (`order.create` → `order.paid`/`order.expired`, refunds).
-- `RedemptionView.externalOrderId` stays null until Phase 13 (`externalTicketId` is filled now).
+- ~~Phase 13: producer-collects payments~~ → shipped below.
 - The outbox never purges SENT rows; add retention once volumes are real.
+
+---
+
+## Phase 13 — Producer-collects payments (2026-11-09)
+
+Discounted tickets on EventOS events are paid to the **producer**, on the producer's own checkout
+(owner decision A, CLAUDE.md rules 6 + 10; contract `docs/SIAPP_API.md` §4.2, §3.8, §5). SIAPP spends
+the keys, holds the spot and issues the ticket once EventOS says the order is paid. Hand-managed
+producers keep the Stripe flow untouched.
+
+**Shipped**
+
+- `Redemption.qrPayload` (unique) minted in `redeem()` for PRODUCER_COLLECTS discounted offers — the
+  `Ticket` row waits for `order.paid`; `externalOrderId`, `externalPayUrl`, `externalRefundedAt`,
+  `externalRefundError`. Migration `20261109180000_producer_collects_payments`.
+- `startRedemptionPayment` dispatcher (`lifecycle.ts`): SIAPP_COLLECTS → Stripe Checkout exactly as
+  before; PRODUCER_COLLECTS → `requestExternalOrder` (`src/domain/partners-api/payments.ts`): a
+  synchronous `order.create` envelope signed like the outbox (same secret, same header, NOT queued —
+  the member is waiting) carrying redemption id, EventOS event/ticket-type ids, offer ref, QR payload,
+  member price / face / discount, +1 cash, expected total, buyer name + email (decision C: paid tickets
+  carry the email), `partner_payment_hold_minutes`, display name, signed selfie URL. 2xx → order id,
+  pay URL and hold expiry stored (the hold replaces our own window), member redirected; a live stored
+  link is reused on retry without a second call (EventOS is idempotent by redemption id anyway).
+  Terminal refusals `sold_out | price_mismatch | event_not_live | offer_unknown | discount_below_floor`
+  → redemption CANCELLED, keys back, member-facing message (`ORDER_CREATE_MESSAGES`), no
+  `redemption.cancelled` (EventOS held nothing); 5xx / 408 / 429 / network → stays PENDING_PAYMENT with
+  "try again".
+- `POST /api/partner/v1/redemptions/{id}/payment` → `completeExternalPayment` (bearer, idempotent,
+  403 for another producer's redemption): `order.paid` = conditional PENDING_PAYMENT → ACTIVE, Ticket
+  created with the pre-minted payload + our HMAC signature + `externalTicketId/externalOrderId`,
+  waitlist claim consumed, confirmation email; `409 qr_mismatch` when EventOS's token differs (nothing
+  changes); any other status → 200 no-op. `order.expired` → EXPIRED + keys back (PENDING only) +
+  waitlist. `refund.succeeded` → `externalRefundedAt`; `refund.failed` → `externalRefundError`, shown
+  in red on the member's admin page ("refund failed at producer — follow up").
+- Cancellation: no Stripe call for producer-collects; `cashRefundedCents` reports the amount EventOS
+  refunds on our `redemption.cancelled` (`refundCash: true`); a PENDING cancel sends the same message
+  with `refundCash: false` so EventOS releases the hold. `refundEventRedemptions` likewise.
+- `expirePendingPayments`: a redemption with an EventOS order gets `EXTERNAL_HOLD_GRACE_MS` (2 min)
+  past its hold before our sweep expires it (and sends `redemption.cancelled reason expired`), so
+  EventOS's own `order.expired` normally wins; both are idempotent.
+- Settlement: `settleEvent` lines require `paymentMode = SIAPP_COLLECTS`; an EventOS event lands as
+  the existing 0-amount PAID row, shown as "collected by producer" on `/admin/settlements` and the
+  producer page.
+- `RedemptionView` (sales) now fills `externalOrderId/externalTicketId`.
+- Member app: redeem sheet says "you pay {producer} on the next screen", the merchant-of-record note
+  names the producer and says name + email go to them; ticket page "Pay €X at {producer}"; cancel copy
+  "(refunded by {producer})".
+
+**Decisions**
+
+- Refusals from `order.create` cancel the redemption immediately instead of leaving it pending: the
+  producer said no, so there is nothing to wait for; keys go straight back.
+- A redemption that already has a live pay link does not call EventOS again on retry.
+- Events whose offers are all producer-collects still get a settlement row (0, PAID, `NOTHING_OWED`)
+  so the hourly job never revisits them; the UI relabels it.
+
+**Open**
+
+- Phase 12's outbox retention. EventOS E3 must implement `order.create` + the `/payment` reports; the
+  first cross-network test is still pending (both sides tested against contract-shaped stubs).
+- `releaseHeldRedemption` gives producer-collects redemptions the same ≥24 h window as Stripe ones;
+  the EventOS hold only starts when the member clicks pay.
+
+Tests: `tests/partners-payments.test.ts` (11) → suite 148.

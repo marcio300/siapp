@@ -23,7 +23,8 @@ SIAPP about the check-in; the SIAPP scanner keeps working too.
    webhook secret is stored **encrypted** (SIAPP signs with it), previous secret valid 24 h after a rotation.
 2. **Partner API** `/api/partner/v1/*` (bearer key): `connect`, `pricing`, `events/{id}` upsert +
    `publish|pause|cancel`, `events/{id}/sales`, `events/{id}/settlement`, signed `tickets/{id}/photo`
-   *(Phase 11, done)*; `redemptions/{id}/checkin` (Phase 12), `redemptions/{id}/payment` (Phase 13). All
+   *(Phase 11, done)*; `redemptions/{id}/checkin` *(Phase 12, done)*, `redemptions/{id}/payment` *(Phase 13,
+   done)*. All
    validation of offers lives here (`src/domain/partners-api/snapshot.ts`).
 3. **Pricing rule** in `Setting` *(Phase 11, done — `src/domain/partners-api/pricing.ts`)*:
    `key_value_cents` = **100** (€1 per key, owner 2026-11-08), `min_key_cost` 2, `guestlist_key_cost` 10,
@@ -43,11 +44,15 @@ SIAPP about the check-in; the SIAPP scanner keeps working too.
    `X-Siapp-Signature: t=…,v1=HMAC(secret, "t.body")`, backoff 1 m/5 m/15 m/1 h/6 h, terminal 4xx,
    cron `partner-outbox` every minute. EventOS's reply to `redemption.activated` fills
    `Ticket.externalTicketId/externalOrderId`.
-6. **Redemption changes** (Phase 13). `Redemption.externalOrderId/externalPayUrl`
-   (`Ticket.externalTicketId/externalOrderId` landed in Phase 12);
-   `completeRedemptionPayment` generalised to `completeExternalPayment` (EventOS `order.paid` /
-   `order.expired`) when the offer is `PRODUCER_COLLECTS`; the `order.create` command to EventOS
-   replaces Stripe Checkout for those offers. Settlement job skips `PRODUCER_COLLECTS` events.
+6. **Redemption changes** *(Phase 13, done — `src/domain/partners-api/payments.ts`)*.
+   `Redemption.qrPayload` (minted at redemption, EventOS adopts it as the ticket token),
+   `externalOrderId/externalPayUrl/externalRefundedAt/externalRefundError`
+   (`Ticket.externalTicketId/externalOrderId` landed in Phase 12). `startRedemptionPayment` is a
+   dispatcher: SIAPP_COLLECTS → Stripe Checkout (unchanged), PRODUCER_COLLECTS → synchronous signed
+   `order.create` to EventOS → the member pays on the producer's checkout; `POST
+   /redemptions/{id}/payment` (`completeExternalPayment`) handles `order.paid` (ACTIVE + Ticket with the
+   pre-minted payload, `409 qr_mismatch` otherwise), `order.expired`, `refund.succeeded|failed`.
+   Settlement skips `PRODUCER_COLLECTS` offers (EventOS events settle as "collected by producer").
 7. **Scanner / attendance** *(Phase 12, done — `src/domain/partners-api/checkin.ts`)*.
    `POST /redemptions/{id}/checkin` → `recordExternalCheckIn` = the OK branch of `processScan`
    (conditional flip, `shows++`, `Scan.source = EVENTOS`, idempotent by `eventosCheckInId`);
