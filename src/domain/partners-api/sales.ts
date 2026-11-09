@@ -104,7 +104,7 @@ export async function salesForEvent(eventId: string, opts: { since?: string | nu
   };
   const rows = await db.redemption.findMany({
     where,
-    include: { member: { select: { name: true, email: true } }, offer: { select: { externalRef: true } }, ticket: { select: { qrPayload: true } } },
+    include: { member: { select: { name: true, email: true } }, offer: { select: { externalRef: true } }, ticket: { select: { qrPayload: true, externalTicketId: true, externalOrderId: true } } },
     orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
     take: limit + 1,
   });
@@ -119,9 +119,9 @@ export async function salesForEvent(eventId: string, opts: { since?: string | nu
     plusOneName: r.plusOneName,
     keyCost: r.keyCost,
     cashCents: r.cashCents,
-    qrPayload: r.ticket?.qrPayload ?? null,
-    externalOrderId: null,
-    externalTicketId: null,
+    qrPayload: r.ticket?.qrPayload ?? r.qrPayload ?? null,
+    externalOrderId: r.externalOrderId ?? r.ticket?.externalOrderId ?? null,
+    externalTicketId: r.ticket?.externalTicketId ?? null,
     redeemedAt: r.createdAt.toISOString(),
     checkedInAt: r.checkedInAt?.toISOString() ?? null,
     cancelledAt: r.cancelledAt?.toISOString() ?? null,

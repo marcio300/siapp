@@ -16,6 +16,7 @@ export type PartnerErrorCode =
   | "rate_limited"
   | "no_settlement"
   | "no_offers"
+  | "qr_mismatch"
   | "bad_signature"
   | "expired"
   | "internal";

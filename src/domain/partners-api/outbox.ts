@@ -61,6 +61,10 @@ export function setOutboundFetchForTests(fn: typeof fetch | null): void {
   if (process.env.NODE_ENV === "production") return;
   testFetch = fn;
 }
+/** The fetch outbound calls use right now (the test seam when set) — shared with the synchronous `order.create` command. */
+export function currentOutboundFetch(): typeof fetch {
+  return testFetch ?? fetch;
+}
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type ProducerLite = { id: string; eventosOrgId: string | null; eventosWebhookUrl: string | null };

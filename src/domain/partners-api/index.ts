@@ -12,4 +12,5 @@ export * from "./override";
 export * from "./outbox";
 export * from "./hooks";
 export * from "./checkin";
+export * from "./payments";
 export { partnerRoute, partnerErrorResponse } from "./http";
