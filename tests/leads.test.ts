@@ -173,13 +173,13 @@ describe("founder pre-registration (leads)", () => {
     expect(r.lead.locale).toBe("pt");
     const welcome = sent.at(-1)!;
     expect(welcome.to).toBe("joana@example.com");
-    expect(welcome.subject).toBe(`és o fundador #${r.lead.number}`);
-    expect(welcome.text).toContain("desculpa, joana, chegaste cedo.");
+    expect(welcome.subject).toBe(`és o membro fundador #${r.lead.number}`);
+    expect(welcome.text).toContain("sorry, joana, chegaste cedo.");
     expect(welcome.text).toContain(`/founders/unsubscribe?t=${r.lead.unsubscribeToken}`);
     const staff = await prisma.staffUser.findFirstOrThrow();
     await inviteLeads([r.lead.id], staff.id, { paceMs: 0 });
     const invite = sent.at(-1)!;
-    expect(invite.subject).toBe(`fundador #${r.lead.number}, as portas abriram`);
+    expect(invite.subject).toBe(`membro fundador #${r.lead.number}, as portas abriram`);
     expect(invite.text).toContain("Criar a minha conta: ");
     expect(invite.html).not.toContain("Create my account");
     // default stays English; a later signup in Portuguese switches the stored language

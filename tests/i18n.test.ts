@@ -33,9 +33,9 @@ describe("i18n", () => {
 
   it("falls back to English for untranslated namespaces and serves pt where it exists", () => {
     expect(messagesFor("pt").signIn.title).toBe(en.signIn.title); // not translated yet → English
-    expect(translatorFor("pt", "founders")("submit")).toBe("Garantir o meu acordo de fundador");
+    expect(translatorFor("pt", "founders")("submit")).toBe("Garantir as minhas condições de membro fundador");
     expect(translatorFor("en", "founders")("submit")).toBe("Lock in my founder deal");
     expect(translatorFor("xx", "founders")("submit")).toBe("Lock in my founder deal");
-    expect(translatorFor("pt", "founderEmails")("welcomeSubject", { number: 7 })).toBe("és o fundador #7");
+    expect(translatorFor("pt", "founderEmails")("welcomeSubject", { number: 7 })).toBe("és o membro fundador #7");
   });
 });
