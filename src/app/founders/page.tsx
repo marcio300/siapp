@@ -55,13 +55,16 @@ export default async function FoundersPage({ searchParams }: { searchParams: Pro
       {/* Mobile order: pitch → form → perks (ad traffic is mostly phones); on lg the form sits beside the pitch. */}
       <section className="grid flex-1 gap-10 py-10 lg:grid-cols-[1.15fr_1fr] lg:grid-rows-[auto_auto] lg:items-start lg:gap-x-16 lg:gap-y-8 lg:py-16">
         <div className="lg:col-start-1 lg:row-start-1">
-          <p className="badge badge-red self-start">founder deal · limited to pre-registrations</p>
+          <p className="badge badge-red self-start">founder deal · limited to 100 members</p>
           <h1 className="mt-5 font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
             sorry<span className="text-red">,</span> the doors aren&apos;t open yet<span className="text-red">.</span>
           </h1>
           <p className="mt-5 font-serif text-2xl italic leading-snug text-ink-muted sm:text-3xl">but the first ones in get the founder deal — forever.</p>
           <p className="mt-6 max-w-xl text-base leading-relaxed text-ink-muted">
-            SIAPP is a members club for Lisbon nightlife. Pay one membership, get <span className="text-ink">keys</span> every month, spend them on free or discounted entry at the city&apos;s best parties. Pre-register now and your membership terms are locked at the founder deal for as long as you stay a member. After launch, nobody gets it.
+            <strong className="font-semibold text-ink">Sorry, It&apos;s a Private Party</strong> is a members club for Lisbon nightlife. Pay one membership, get <span className="text-ink">keys</span> every month, spend them on free or discounted tickets at the city&apos;s best events &amp; nightlife affairs. Pre-register now and your membership terms are locked at the founder deal for as long as you stay a member. After launch, nobody gets it.
+          </p>
+          <p className="mt-4 max-w-xl text-base leading-relaxed text-ink">
+            Founding memberships are limited to <strong className="font-semibold text-red-soft">100 members</strong>. Be on that 100.
           </p>
         </div>
 
