@@ -7,7 +7,7 @@ import { evaluate } from "@/domain/fraud/evaluate";
 import { COUNTING, cancellationWindowHours, checkEligibility, reservedSeats } from "./eligibility";
 import { RedemptionError } from "./errors";
 import { emailRedemptionConfirmed } from "./notify";
-import { issueTicket } from "./tickets";
+import { issueTicket, newQrPayload } from "./tickets";
 import { notifyRedemptionActivated, notifySalesUpdated } from "@/domain/partners-api/hooks";
 
 /**
@@ -87,10 +87,19 @@ export async function redeem(
           const windowHours = await cancellationWindowHours(offer, tx);
           const cancelDeadlineAt = new Date(offer.event.startsAt.getTime() - windowHours * 3_600_000);
           const status: "HELD" | "PENDING_PAYMENT" | "ACTIVE" = fraud.decision === "REVIEW" ? "HELD" : elig.cashCents > 0 ? "PENDING_PAYMENT" : "ACTIVE";
-          const paymentExpiresAt = status === "PENDING_PAYMENT" ? new Date(now.getTime() + pendingMinutes * 60_000) : null;
+          // Producer-collects (EventOS) cash: the member pays the producer, so the
+          // hold is theirs — our window is only how long the member has to START
+          // paying; EventOS's `order.create` reply replaces it with the real hold.
+          const producerCollects = offer.type === "DISCOUNT_TICKET" && offer.paymentMode === "PRODUCER_COLLECTS";
+          const holdMinutes = producerCollects ? await getSetting("partner_payment_hold_minutes", tx) : pendingMinutes;
+          const paymentExpiresAt = status === "PENDING_PAYMENT" ? new Date(now.getTime() + holdMinutes * 60_000) : null;
 
           const redemption = await tx.redemption.create({
-            data: { memberId, offerId, eventId: offer.eventId, status, keyCost: elig.keyCost, plusOneName, cashCents: elig.cashCents, paymentExpiresAt, cancelDeadlineAt, createdAt: now },
+            data: {
+              memberId, offerId, eventId: offer.eventId, status, keyCost: elig.keyCost, plusOneName, cashCents: elig.cashCents, paymentExpiresAt, cancelDeadlineAt, createdAt: now,
+              // EventOS adopts this payload as its ticket token when the order is paid (contract §4.2/§3.8).
+              ...(producerCollects ? { qrPayload: newQrPayload() } : {}),
+            },
           });
           const spent = elig.keyCost > 0 ? await spendKeys(memberId, elig.keyCost, redemption.id, { db: tx, now }) : { fromPlan: 0, fromPurchased: 0 };
           if (fraud.decision === "REVIEW") {

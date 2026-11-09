@@ -18,8 +18,11 @@ export const NOTHING_OWED = "nothing-owed";
  * returned untouched). Lines come from tickets whose redemption is CHECKED_IN
  * on a DISCOUNT_TICKET offer — the door scan is the only thing that puts a
  * ticket on the statement (invariant 10). FREE_TICKET and GUESTLIST settle
- * nothing. An event with nothing owed gets a 0-amount row marked PAID so the
- * hourly job doesn't revisit it and the ledger still shows it was settled.
+ * nothing, and neither do PRODUCER_COLLECTS offers (EventOS producers took the
+ * money themselves — CLAUDE.md rule 6), so an EventOS event normally lands as
+ * a 0-amount PAID "nothing owed" row. An event with nothing owed gets that
+ * 0-amount row so the hourly job doesn't revisit it and the ledger still shows
+ * it was settled.
  */
 export async function settleEvent(eventId: string, opts: Opts = {}) {
   const db = opts.db ?? defaultPrisma;
@@ -31,7 +34,7 @@ export async function settleEvent(eventId: string, opts: Opts = {}) {
   if (event.status !== "FINISHED") throw new SettlementError("Only finished events settle");
 
   const tickets = await db.ticket.findMany({
-    where: { redemption: { eventId, status: "CHECKED_IN", offer: { type: "DISCOUNT_TICKET" } } },
+    where: { redemption: { eventId, status: "CHECKED_IN", offer: { type: "DISCOUNT_TICKET", paymentMode: "SIAPP_COLLECTS" } } },
     include: { redemption: { include: { offer: { select: { faceValueCents: true, discountPercent: true } } } } },
     orderBy: { issuedAt: "asc" },
   });

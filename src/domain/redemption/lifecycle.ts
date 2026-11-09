@@ -10,6 +10,7 @@ import { notifyOnce } from "@/domain/notifications/log";
 import { emailRedemptionCancelled, emailRedemptionConfirmed, emailWaitlistSpot } from "./notify";
 import { issueTicket } from "./tickets";
 import { notifyRedemptionActivated, notifyRedemptionCancelled, notifySalesUpdated } from "@/domain/partners-api/hooks";
+import { ExternalOrderError, requestExternalOrder } from "@/domain/partners-api/payments";
 
 /**
  * Everything that moves a redemption after creation: payment (Stripe
@@ -23,14 +24,33 @@ function appUrl() {
   return (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
-/** Stripe Checkout for a PENDING_PAYMENT redemption (reused on retry, idempotent per redemption). */
-export async function startRedemptionPayment(redemptionId: string, memberId: string, opts: Opts = {}): Promise<{ url: string }> {
+/**
+ * Open the payment for a PENDING_PAYMENT redemption. Dispatcher (CLAUDE.md
+ * rule 6): offers we collect for → Stripe Checkout (unchanged, idempotent per
+ * redemption); producer-collects offers (EventOS) → a synchronous
+ * `order.create` to the producer's EventOS, whose checkout the member pays —
+ * a terminal refusal there cancels the redemption and returns the keys.
+ */
+export async function startRedemptionPayment(redemptionId: string, memberId: string, opts: Opts & { fetchImpl?: typeof fetch } = {}): Promise<{ url: string; via: "stripe" | "eventos" }> {
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
   const r = await db.redemption.findUnique({ where: { id: redemptionId }, include: { offer: { include: { event: true } } } });
   if (!r || r.memberId !== memberId) throw new RedemptionError("NOT_FOUND", "Ticket not found");
   if (r.status !== "PENDING_PAYMENT") throw new RedemptionError("BAD_STATE", "Nothing to pay for this ticket");
   if (r.paymentExpiresAt && r.paymentExpiresAt <= now) throw new RedemptionError("TOO_LATE", "The payment window closed — redeem again");
+  if (r.offer.paymentMode === "PRODUCER_COLLECTS") {
+    try {
+      const order = await requestExternalOrder(r.id, { db, now, fetchImpl: opts.fetchImpl });
+      return { url: order.payUrl, via: "eventos" };
+    } catch (e) {
+      if (e instanceof ExternalOrderError) {
+        if (e.terminal) throw new RedemptionError("BAD_STATE", e.message, { code: e.code });
+        console.error("eventos order.create failed:", e.message);
+        throw new RedemptionError("BAD_STATE", "The producer's payment page isn't answering right now. Your spot is still held — try again in a moment.", { code: e.code });
+      }
+      throw e;
+    }
+  }
   const customer = await ensureStripeCustomer(memberId, { db });
   const session = await billingStripe().checkout.sessions.create(
     {
@@ -47,7 +67,7 @@ export async function startRedemptionPayment(redemptionId: string, memberId: str
   );
   if (!session.url) throw new RedemptionError("BAD_STATE", "Stripe did not return a Checkout URL");
   await db.redemption.update({ where: { id: r.id }, data: { stripeCheckoutSessionId: session.id } });
-  return { url: session.url };
+  return { url: session.url, via: "stripe" };
 }
 
 /** Webhook: payment confirmed → ACTIVE + ticket (+ remember the PaymentIntent for refunds). Idempotent. */
@@ -116,7 +136,7 @@ export async function denyHeldRedemption(redemptionId: string, opts: Opts = {}):
 export async function cancelRedemption(redemptionId: string, memberId: string | null, opts: Opts & { reason?: string } = {}): Promise<{ keysRefunded: number; cashRefundedCents: number }> {
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
-  const r = await db.redemption.findUnique({ where: { id: redemptionId }, include: { member: true, event: true } });
+  const r = await db.redemption.findUnique({ where: { id: redemptionId }, include: { member: true, event: true, offer: { select: { paymentMode: true } } } });
   if (!r || (memberId && r.memberId !== memberId)) throw new RedemptionError("NOT_FOUND", "Ticket not found");
   if (!["ACTIVE", "PENDING_PAYMENT", "HELD"].includes(r.status)) throw new RedemptionError("BAD_STATE", `This ticket is ${r.status.toLowerCase().replace("_", " ")}`);
   if (r.status === "ACTIVE" && now > r.cancelDeadlineAt) {
@@ -127,7 +147,11 @@ export async function cancelRedemption(redemptionId: string, memberId: string | 
 
   const refund = r.keyCost > 0 ? await refundKeys(r.id, { note: opts.reason ?? "cancelled by member" }, { db, now }) : { fromPlan: 0, fromPurchased: 0 };
   let cashRefundedCents = 0;
-  if (r.status === "ACTIVE" && r.cashCents > 0 && r.stripePaymentIntentId && !r.stripeRefundId) {
+  if (r.status === "ACTIVE" && r.cashCents > 0 && r.offer.paymentMode === "PRODUCER_COLLECTS") {
+    // The producer took the money through EventOS, so EventOS refunds it on our
+    // `redemption.cancelled` (refundCash) and reports `refund.succeeded|failed` back.
+    cashRefundedCents = r.cashCents;
+  } else if (r.status === "ACTIVE" && r.cashCents > 0 && r.stripePaymentIntentId && !r.stripeRefundId) {
     const stripeRefund = await billingStripe().refunds.create({ payment_intent: r.stripePaymentIntentId, amount: r.cashCents }, { idempotencyKey: `refund_${r.id}` });
     await db.redemption.update({ where: { id: r.id }, data: { stripeRefundId: stripeRefund.id } });
     cashRefundedCents = r.cashCents;
@@ -138,11 +162,15 @@ export async function cancelRedemption(redemptionId: string, memberId: string | 
   return { keysRefunded: refund.fromPlan + refund.fromPurchased, cashRefundedCents };
 }
 
+/** When EventOS holds the order, let its own `order.expired` arrive first; we only sweep stragglers. */
+export const EXTERNAL_HOLD_GRACE_MS = 2 * 60_000;
+
 /** Job (every 5 min): unpaid holds past their window → EXPIRED, keys back, seat offered to the waitlist. */
 export async function expirePendingPayments(opts: Opts = {}): Promise<{ expired: number }> {
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
-  const due = await db.redemption.findMany({ where: { status: "PENDING_PAYMENT", paymentExpiresAt: { lte: now } } });
+  const candidates = await db.redemption.findMany({ where: { status: "PENDING_PAYMENT", paymentExpiresAt: { lte: now } } });
+  const due = candidates.filter((r) => !r.externalOrderId || r.paymentExpiresAt!.getTime() + EXTERNAL_HOLD_GRACE_MS <= now.getTime());
   let expired = 0;
   for (const r of due) {
     const res = await db.redemption.updateMany({ where: { id: r.id, status: "PENDING_PAYMENT" }, data: { status: "EXPIRED" } });
@@ -189,14 +217,16 @@ export async function markNoShows(opts: Opts = {}): Promise<{ noShows: number; f
 export async function refundEventRedemptions(eventId: string, opts: Opts = {}): Promise<{ refunded: number }> {
   const db = opts.db ?? defaultPrisma;
   const now = opts.now ?? new Date();
-  const live = await db.redemption.findMany({ where: { eventId, status: { in: ["ACTIVE", "PENDING_PAYMENT", "HELD"] } }, include: { member: true, event: true } });
+  const live = await db.redemption.findMany({ where: { eventId, status: { in: ["ACTIVE", "PENDING_PAYMENT", "HELD"] } }, include: { member: true, event: true, offer: { select: { paymentMode: true } } } });
   let refunded = 0;
   for (const r of live) {
     const res = await db.redemption.updateMany({ where: { id: r.id, status: r.status }, data: { status: "CANCELLED", cancelledAt: now } });
     if (res.count === 0) continue;
     if (r.keyCost > 0) await refundKeys(r.id, { note: "event cancelled" }, { db, now });
     let cash = 0;
-    if (r.status === "ACTIVE" && r.cashCents > 0 && r.stripePaymentIntentId && !r.stripeRefundId) {
+    if (r.status === "ACTIVE" && r.cashCents > 0 && r.offer.paymentMode === "PRODUCER_COLLECTS") {
+      cash = r.cashCents; // refunded by the producer through EventOS (its own mass refund)
+    } else if (r.status === "ACTIVE" && r.cashCents > 0 && r.stripePaymentIntentId && !r.stripeRefundId) {
       const stripeRefund = await billingStripe().refunds.create({ payment_intent: r.stripePaymentIntentId, amount: r.cashCents }, { idempotencyKey: `refund_${r.id}` });
       await db.redemption.update({ where: { id: r.id }, data: { stripeRefundId: stripeRefund.id } });
       cash = r.cashCents;
