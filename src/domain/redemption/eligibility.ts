@@ -34,8 +34,14 @@ export type Eligibility =
   | { ok: true; keyCost: number; cashCents: number; privateSaleActive: boolean }
   | { ok: false; reason: RefusalReason; message: string; detail: Record<string, unknown> };
 
+/**
+ * Member price for a discounted ticket. Formula fixed by the EventOS contract (§2.1):
+ * face − round(face × d / 100). EventOS recomputes this on `order.create` and refuses a
+ * mismatch, so SIAPP must never use round(face × (1 − d/100)) — the two differ by a cent
+ * on .5 boundaries (e.g. €12.50 at 15 %).
+ */
 export function discountedPriceCents(faceValueCents: number, discountPercent: number): number {
-  return Math.round(faceValueCents * (1 - discountPercent / 100));
+  return faceValueCents - Math.round((faceValueCents * discountPercent) / 100);
 }
 
 export function offerCost(offer: Offer, plusOne: boolean): { keyCost: number; cashCents: number } {
