@@ -428,6 +428,53 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   vector + route ok/403/410/404, cancel refunds keys (ledger) idempotently + later push/publish 409. NOT in 11
   (Phase 12/13): outbound events to EventOS, `externalOrderId/externalTicketId` (sales returns null), external
   check-ins, producer-collects payment flow, no-show grace.
+- **Done — Phase 12 (outbound events, mirror tickets, external check-ins — contract §1.2/§3.7/§4)**: schema —
+  enums `ScanSource` (SIAPP|EVENTOS) + `OutboundStatus` (PENDING|SENT|FAILED); `OutboundEvent` (id = ULID envelope id,
+  producerId, eventId?, type, payload Json, `dedupeKey @unique`, status, attempts, nextAttemptAt, lastError,
+  responseStatus/responseBody, sentAt); `Ticket.externalTicketId/externalOrderId`; `Scan.source` + `Scan.externalId
+  @unique` (EventOS check-in id) — migration `20261109150000_eventos_outbound`. `src/domain/partners-api/outbox.ts`:
+  `ulid()`, `signEnvelope(secret, t, body)` = HMAC-SHA256 hex over `"t.body"` + `signatureHeader` (`t=…,v1=…`;
+  contract §1.2 test vector in the tests), `queueOutbound(producer, type, data, {eventId, dedupeKey, notBefore})`
+  (null when the producer has no org/webhook; a dedupeKey re-arms a SENT/FAILED row, leaves a PENDING one),
+  `flushOutbound({ids?, now, fetchImpl})` (due PENDING rows → POST envelope `{id, type, producerId, eventosOrgId,
+  createdAt, data}` to `Producer.eventosWebhookUrl` signed with the CURRENT secret (`webhookSecrets[0]`); 2xx → SENT +
+  reply stored + `onDelivered` (default: `redemption.activated` reply `{ticketId, orderId}` → Ticket external ids);
+  retryable = network error / 408 / 429 / 5xx → `OUTBOUND_BACKOFF_MS` 1 m/5 m/15 m/1 h/6 h then FAILED; other 4xx →
+  FAILED at once), `retryOutbound(id)` (FAILED → PENDING, attempts 0), TEST SEAM `setOutboundFetchForTests`.
+  `hooks.ts` (best-effort, swallow + console.error; deliver immediately via `flushOutbound({ids})` unless inside a tx
+  client): `notifyRedemptionActivated(id)` — ONLY `source = EVENTOS` + FREE_TICKET/GUESTLIST + ticket exists (DISCOUNT
+  → null: EventOS activates those via `order.paid`, Phase 13); payload §4.1 = redemptionId, siappEventId,
+  eventosEventId, offerRef, ticketTypeId (from the ref), qrPayload, `member.displayName` (`inviteeLabel`, NO email),
+  plusOneName, `photoUrl/photoExpiresAt` (`signedPhotoUrl`), keyCost, `window {validUntil, afterWindow}` for guest
+  lists; `notifyRedemptionCancelled(id, reason member|staff|event_cancelled|denied|expired, {wasActive, cashCents})`
+  → `refundCash = wasActive && cash > 0`; `notifyTicketCheckedIn({redemptionId, qrPayload, at, gate, scanId})`;
+  `queueSalesUpdated(eventId)` dedupeKey `sales:{eventId}` — PENDING row absorbs, SENT row re-armed no sooner than
+  `sentAt + 30 s` (`SALES_UPDATED_WINDOW_MS`); `notifySalesUpdated`; `disconnectProducer(producerId, key_revoked|
+  staff)` = queue `producer.disconnected` + flush NOW (the secret is about to go) → revoke keys (+ unbind for staff).
+  Hook sites: `redeem` (ACTIVE → activated, else sales.updated), `releaseHeldRedemption`, `denyHeldRedemption`
+  (denied), `cancelRedemption` (member when memberId given, else staff), `expirePendingPayments` (expired),
+  `refundEventRedemptions` (event_cancelled), `markNoShows` (sales.updated), `processScan` OK on an EVENTOS event
+  (`ticket.checked_in`, event select gained `source`), producer actions `revokeApiKeyAction`/`unbindEventOSAction` →
+  `disconnectProducer`. `checkin.ts` `recordExternalCheckIn(producerId, redemptionId, body, {now})` (route `POST
+  /api/partner/v1/redemptions/[redemptionId]/checkin`, idempotent): zod `{at, gate?, device?, eventosCheckInId}`;
+  404 unknown, 403 `forbidden` for another producer's redemption; replay by `Scan.externalId` (`replay: true`);
+  `at` clamped to [startsAt − 24 h, now]; results OK (conditional ACTIVE → CHECKED_IN + `shows++` + Scan `source
+  EVENTOS`, `scannedBy "eventos:{gate|device|door}"`) / ALREADY_SCANNED (+ `firstScanAt`) / CANCELLED (CANCELLED,
+  EXPIRED, DENIED, or NO_SHOW older than `NO_SHOW_REVERSAL_HOURS` 48 after endsAt) / INVALID (PENDING_PAYMENT, HELD,
+  no ticket); NO_SHOW within 48 h → CHECKED_IN, `noShows--` (floored) `shows++`, `reversedNoShow: true`; every
+  attempt writes ONE Scan row; OK → sales.updated. `markNoShows` filters `source = EVENTOS` events to `endsAt +
+  eventos_noshow_grace_hours ≤ now`. Cron `partner-outbox` (`* * * * *`, 13 crons now) + `pnpm jobs:partner-outbox`.
+  UI: member ticket page "preparing for the door" while `externalTicketId` is null on an EventOS FULL/GUESTLIST
+  ticket; admin event page "Messages to EventOS" table (last 50: type/status/attempts/next/last error, Retry button →
+  `retryOutboundAction` OPS = `retryOutbound` + immediate flush), scanner-login card collapsed into `<details>` for
+  EventOS events. Tests `tests/partners-outbound.test.ts` (10 → suite 137): §1.2 test vector + header + ULID order,
+  FULL redemption through `redeem()` → signed envelope verified with the secret, payload fields, photo URL verifies,
+  reply → external ids, SENT row w/ eventId; GUESTLIST window + DISCOUNT → nothing; 503 → +1 m, not due at +30 s,
+  network error → +5 m, 404 → FAILED, staff retry → SENT, six 5xx → FAILED; sales.updated coalescing (one row, re-arm
+  at sentAt + 30 s); cancellation reasons member/staff/denied/expired/event_cancelled + refundCash; our scan →
+  ticket.checked_in; external check-in OK/replay/ALREADY_SCANNED/403/404/422/CANCELLED/INVALID + shows; grace
+  (manual event finishes at +1 h, EventOS events at +7 h) + reversal at +8 h, refused at +49 h; disconnect
+  key_revoked then staff (binding + secrets gone). `tests/notifications.test.ts` cron count 12 → 13.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

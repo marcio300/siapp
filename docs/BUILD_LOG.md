@@ -707,3 +707,55 @@ The SIAPP half of `docs/EVENTOS_INTEGRATION.md`, built against the contract in t
 - SIAPP terms update for decision C (name + email reach the producer on paid tickets).
 - Admin "unbind" leaves EventOS-sourced events in place; a disconnected producer's events stay
   read-only until EventOS reconnects (no reassignment to manual yet).
+
+---
+
+## Phase 12 — Outbound events, mirror tickets, external check-ins (2026-11-09)
+
+SIAPP now talks *to* the producer's EventOS (contract `docs/SIAPP_API.md` §1.2, §4) and accepts the
+EventOS scanner's check-ins (§3.7). Nothing is sent for events we manage by hand.
+
+**Shipped**
+
+- `OutboundEvent` outbox (envelope id = ULID, payload, status PENDING/SENT/FAILED, attempts, backoff
+  1 m → 5 m → 15 m → 1 h → 6 h then FAILED, terminal on any 4xx but 408/429, reply stored) delivered by
+  `flushOutbound` — right after the hook that queued it and by the new every-minute cron
+  `partner-outbox` (`pnpm jobs:partner-outbox`). Signature `X-Siapp-Signature: t=…,v1=…` =
+  HMAC-SHA256(webhook secret, `"t.body"`), verified against the contract's test vector.
+- Hooks (`src/domain/partners-api/hooks.ts`, best-effort, never throw into the business operation):
+  `redemption.activated` when a FULL or GUESTLIST redemption on an EventOS event becomes ACTIVE
+  (`redeem`, fraud release, waitlist claim) with the member's display name, the QR payload, a signed
+  selfie URL and the guest-list window — never for DISCOUNT_TICKET (EventOS activates those itself in
+  Phase 13); `redemption.cancelled` with `reason` member/staff/denied/expired/event_cancelled and
+  `refundCash`; `ticket.checked_in` when our scanner admits a ticket on an EventOS event;
+  `sales.updated` coalesced to one row per event per 30 s; `producer.disconnected` before a key revoke
+  or unbind (delivered immediately, while we still hold the secret).
+- EventOS's reply to `redemption.activated` fills `Ticket.externalTicketId/externalOrderId`; the member
+  ticket page says "preparing for the door" until it does.
+- `POST /api/partner/v1/redemptions/{id}/checkin` → `recordExternalCheckIn`: the OK branch of
+  `processScan` (conditional ACTIVE → CHECKED_IN, `shows++`, one `Scan` row with `source = EVENTOS`,
+  `scannedBy = "eventos:{gate}"`), idempotent by `eventosCheckInId` (`Scan.externalId`), 403 for another
+  producer's redemption, NO_SHOW → CHECKED_IN reversal within 48 h of the event's end.
+- `markNoShows` waits `eventos_noshow_grace_hours` (6) after `endsAt` for EventOS events.
+- Backoffice: "Messages to EventOS" log on the event page (last 50, retry for FAILED rows), scanner
+  login card collapsed for EventOS events.
+- Migration `20261109150000_eventos_outbound`; 10 tests (`tests/partners-outbound.test.ts`, suite 137).
+
+**Decisions**
+
+- **Delivery is attempted immediately after queueing**, not only by the cron — a member's ticket should
+  be scannable at the producer's door within seconds. The cron is the retry loop.
+- **`sales.updated` reuses one row per event** (`dedupeKey`): a PENDING row absorbs new nudges, a SENT
+  row is re-armed no sooner than 30 s after it went out. History of nudges is not kept.
+- **`producer.disconnected` is sent synchronously before the binding is forgotten**; if EventOS is down
+  at that moment the message is lost by design (there is no secret left to retry with).
+- **`refundCash` is true only for a redemption that was ACTIVE with cash** — an expired or denied hold
+  never collected money.
+- **A no-show reversal arrives as `result: "OK"` with `reversedNoShow: true`** and the device's
+  timestamp (clamped to the event window) becomes `checkedInAt`.
+
+**Open**
+
+- Phase 13: producer-collects payments (`order.create` → `order.paid`/`order.expired`, refunds).
+- `RedemptionView.externalOrderId` stays null until Phase 13 (`externalTicketId` is filled now).
+- The outbox never purges SENT rows; add retention once volumes are real.

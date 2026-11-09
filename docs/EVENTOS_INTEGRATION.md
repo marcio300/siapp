@@ -37,16 +37,23 @@ SIAPP about the check-in; the SIAPP scanner keeps working too.
    `Offer.paymentMode SIAPP_COLLECTS|PRODUCER_COLLECTS`, `Offer.keyCostOverride`; EventOS-sourced events
    read-only in the backoffice except fraud/review, emergency cancel and the staff key-cost override. The
    +1 on an EventOS offer costs the same keys as the member (same value, same rule).
-5. **Outbox** (`OutboundEvent`: target, type, payload, attempts, nextAttemptAt, status) + job, for
-   `redemption.activated`, `redemption.cancelled`, `ticket.checked_in`, `sales.updated` to EventOS,
-   signed HMAC with the producer's webhook secret. SIAPP has no outbox today.
-6. **Redemption changes.** `Redemption.externalOrderId/externalPayUrl`, `Ticket.externalTicketId`;
+5. **Outbox** *(Phase 12, done — `src/domain/partners-api/outbox.ts` + `hooks.ts`)*: `OutboundEvent`
+   rows (ULID = envelope id) for `redemption.activated` (FULL/GUESTLIST only), `redemption.cancelled`,
+   `ticket.checked_in`, `sales.updated` (coalesced 30 s per event), `producer.disconnected`; signed
+   `X-Siapp-Signature: t=…,v1=HMAC(secret, "t.body")`, backoff 1 m/5 m/15 m/1 h/6 h, terminal 4xx,
+   cron `partner-outbox` every minute. EventOS's reply to `redemption.activated` fills
+   `Ticket.externalTicketId/externalOrderId`.
+6. **Redemption changes** (Phase 13). `Redemption.externalOrderId/externalPayUrl`
+   (`Ticket.externalTicketId/externalOrderId` landed in Phase 12);
    `completeRedemptionPayment` generalised to `completeExternalPayment` (EventOS `order.paid` /
    `order.expired`) when the offer is `PRODUCER_COLLECTS`; the `order.create` command to EventOS
    replaces Stripe Checkout for those offers. Settlement job skips `PRODUCER_COLLECTS` events.
-7. **Scanner / attendance.** `recordExternalCheckIn(redemptionId, at, gate)` = the OK branch of
-   `processScan` (idempotent); `markNoShows` waits `eventos_noshow_grace_hours` (6) for EventOS
-   events and a late check-in reverses NO_SHOW for 48 h (also closes `DECISIONS_PENDING` #2).
+7. **Scanner / attendance** *(Phase 12, done — `src/domain/partners-api/checkin.ts`)*.
+   `POST /redemptions/{id}/checkin` → `recordExternalCheckIn` = the OK branch of `processScan`
+   (conditional flip, `shows++`, `Scan.source = EVENTOS`, idempotent by `eventosCheckInId`);
+   `markNoShows` waits `eventos_noshow_grace_hours` (6) for EventOS events and a late check-in
+   reverses NO_SHOW for 48 h (`noShows--`, `shows++`). Our scanner's OK on an EventOS event is
+   reported back as `ticket.checked_in`.
 8. **Spec amendments** (done 2026-11-08 with decision A): `PRODUCT_SPEC.md` §5, §6, §12 and
    `CLAUDE.md` rules 6 and 10 now distinguish hand-managed producers (we collect, we settle) from
    EventOS producers (they collect through EventOS checkout, nothing to settle).
