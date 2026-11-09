@@ -33,8 +33,10 @@ export async function POST(req: Request) {
   const rawBody = await req.text();
   let event: Stripe.Event;
   try {
-    // constructEvent only needs the webhook secret; any key initialises the SDK.
-    event = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_unused").webhooks.constructEvent(
+    // constructEvent only needs the webhook secret; any key initialises the SDK
+    // (`||`, not `??`: an EMPTY STRIPE_SECRET_KEY="" in .env would otherwise
+    // make the SDK constructor throw and every webhook answer 400).
+    event = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_unused").webhooks.constructEvent(
       rawBody,
       signature,
       secret,
