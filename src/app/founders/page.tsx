@@ -49,7 +49,10 @@ export default async function FoundersPage({ searchParams }: { searchParams: Pro
       <MetaPixel pixelId={process.env.NEXT_PUBLIC_META_PIXEL_ID} />
       <header className="flex items-center justify-between">
         <Link href="/founders" aria-label="SIAPP"><Wordmark /></Link>
-        <Link href="/sign-in" className="whitespace-nowrap text-sm text-ink-muted hover:text-ink"><span className="hidden sm:inline">already a member? </span>sign in</Link>
+        {/* No sign-in link before launch: accounts are created by invitation only (the "Send invitations" action in the backoffice). */}
+        <p className="whitespace-nowrap text-xs text-ink-muted sm:text-sm" title="Accounts are created by invitation when we open.">
+          <span className="hidden sm:inline">member </span>sign-in opens at launch
+        </p>
       </header>
 
       {/* Mobile order: pitch → form → perks (ad traffic is mostly phones); on lg the form sits beside the pitch. */}
