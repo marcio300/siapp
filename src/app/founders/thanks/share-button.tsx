@@ -2,21 +2,22 @@
 
 import { useState } from "react";
 
+type Labels = { share: string; copied: string; text: string; title: string };
+
 /** Web Share where it exists, clipboard elsewhere (mirrors the referrals share button). */
-export function ShareButton({ url }: { url: string }) {
+export function ShareButton({ url, labels }: { url: string; labels: Labels }) {
   const [copied, setCopied] = useState(false);
   async function share() {
-    const text = "I'm on the SIAPP founder list — Lisbon's members club for nightlife. Get the founder deal before the doors open:";
     try {
       if (typeof navigator !== "undefined" && "share" in navigator) {
-        await navigator.share({ title: "SIAPP founder deal", text, url });
+        await navigator.share({ title: labels.title, text: labels.text, url });
         return;
       }
     } catch {
       /* cancelled → fall through to copy */
     }
     try {
-      await navigator.clipboard.writeText(`${text} ${url}`);
+      await navigator.clipboard.writeText(`${labels.text} ${url}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -25,7 +26,7 @@ export function ShareButton({ url }: { url: string }) {
   }
   return (
     <button type="button" onClick={share} className="btn btn-primary w-full !py-3">
-      {copied ? "copied — send it to a friend" : "Bring a friend in early"}
+      {copied ? labels.copied : labels.share}
     </button>
   );
 }

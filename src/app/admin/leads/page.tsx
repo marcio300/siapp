@@ -144,7 +144,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                 <p className="font-medium">{r.email}</p>
                 {r.name && <p className="text-xs text-ink-dark-muted">{r.name}</p>}
               </Td>
-              <Td className="text-ink-dark-muted">{r.city?.name ?? "—"}</Td>
+              <Td className="text-ink-dark-muted">{r.city?.name ?? "—"}{r.locale !== "en" && <span className="ml-1 rounded bg-black/5 px-1 font-mono text-[10px] uppercase">{r.locale}</span>}</Td>
               <Td className="text-xs text-ink-dark-muted">
                 {r.utmSource ?? "(direct)"}
                 {r.utmCampaign && <span className="block">{r.utmCampaign}{r.utmContent ? ` · ${r.utmContent}` : ""}</span>}

@@ -1,81 +1,86 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { LegalFooter } from "@/components/legal-footer";
 import { KeyIcon } from "@/components/key-icon";
-import { Wordmark } from "@/components/wordmark";
+import { LocaleSwitch } from "@/components/locale-switch";
 import { MetaPixel } from "@/components/meta-pixel";
+import { Wordmark } from "@/components/wordmark";
 import { utmFromQuery } from "@/domain/leads";
 import { preRegisterAction } from "./actions";
 import { SubmitButton } from "./submit-button";
 
 export const dynamic = "force-dynamic";
 
-const TITLE = "the founder deal";
-const DESCRIPTION = "SIAPP is a members club for Lisbon nightlife. Pre-register before the doors open and lock in the founder deal — for good.";
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("founders");
+  const title = t("metaTitle");
+  const description = t("metaDescription");
+  return {
+    title,
+    description,
+    alternates: { canonical: "/founders" },
+    openGraph: { title: `${title} · SIAPP`, description, type: "website", url: "/founders", images: [{ url: "/icons/icon-512.png", width: 512, height: 512 }] },
+    twitter: { card: "summary", title: `${title} · SIAPP`, description },
+    robots: { index: true, follow: true },
+  };
+}
 
-export const metadata: Metadata = {
-  title: TITLE,
-  description: DESCRIPTION,
-  alternates: { canonical: "/founders" },
-  openGraph: { title: `${TITLE} · SIAPP`, description: DESCRIPTION, type: "website", url: "/founders", images: [{ url: "/icons/icon-512.png", width: 512, height: 512 }] },
-  twitter: { card: "summary", title: `${TITLE} · SIAPP`, description: DESCRIPTION },
-  robots: { index: true, follow: true },
-};
-
-const ERRORS: Record<string, string> = {
-  invalid_email: "sorry, that email doesn't look right. try again?",
-  disposable: "sorry, throwaway email addresses don't get in. use one you'll keep.",
-  consent_required: "we need your ok to contact you when we open — tick the box.",
-  rate_limited: "easy. too many signups from here in a minute — try again shortly.",
-  generic: "sorry, something went wrong on our side. try again in a moment.",
-};
+const ERROR_KEYS = ["invalid_email", "disposable", "consent_required", "rate_limited", "not_found", "generic"] as const;
 
 /**
- * Pre-launch lead capture (the page ads link to). Public, dark, one form.
- * UTM parameters on the URL are carried through hidden inputs so attribution
+ * Pre-launch lead capture (the page ads link to). Public, dark, one form,
+ * in the visitor's language (EN/PT toggle → /api/locale cookie). UTM
+ * parameters on the URL are carried through hidden inputs so attribution
  * lands on the lead; `?error=` comes back from the action.
  */
 export default async function FoundersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
-  const error = typeof sp.error === "string" ? (ERRORS[sp.error] ?? ERRORS.generic) : null;
+  const [t, locale] = await Promise.all([getTranslations("founders"), getLocale()]);
+  const errorKey = typeof sp.error === "string" ? ((ERROR_KEYS as readonly string[]).includes(sp.error) ? (sp.error as (typeof ERROR_KEYS)[number]) : "generic") : null;
   const unsubscribed = sp.unsubscribed === "1";
   const utm = utmFromQuery(sp) ?? {};
   const utmQuery = new URLSearchParams(Object.entries(utm).filter((e): e is [string, string] => Boolean(e[1])).map(([k, v]) => [`utm_${k}`, v])).toString();
+  const selfUrl = `/founders${utmQuery ? `?${utmQuery}` : ""}`;
   const cities = await prisma.city.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-6 sm:py-8">
       <MetaPixel pixelId={process.env.NEXT_PUBLIC_META_PIXEL_ID} />
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between gap-4">
         <Link href="/founders" aria-label="SIAPP"><Wordmark /></Link>
-        {/* No sign-in link before launch: accounts are created by invitation only (the "Send invitations" action in the backoffice). */}
-        <p className="whitespace-nowrap text-xs text-ink-muted sm:text-sm" title="Accounts are created by invitation when we open.">
-          <span className="hidden sm:inline">member </span>sign-in opens at launch
-        </p>
+        <div className="flex items-center gap-4">
+          {/* No sign-in link before launch: accounts are created by invitation only (the "Send invitations" action in the backoffice). */}
+          <p className="hidden whitespace-nowrap text-sm text-ink-muted sm:block">
+            {t("headerNotePrefix")}{t("headerNote")}
+          </p>
+          <LocaleSwitch current={locale} next={selfUrl} />
+        </div>
       </header>
 
       {/* Mobile order: pitch → form → perks (ad traffic is mostly phones); on lg the form sits beside the pitch. */}
       <section className="grid flex-1 gap-10 py-10 lg:grid-cols-[1.15fr_1fr] lg:grid-rows-[auto_auto] lg:items-start lg:gap-x-16 lg:gap-y-8 lg:py-16">
         <div className="lg:col-start-1 lg:row-start-1">
-          <p className="badge badge-red self-start">founder deal · limited to 100 members</p>
+          <p className="badge badge-red self-start">{t("badge")}</p>
           <h1 className="mt-5 font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
-            sorry<span className="text-red">,</span> the doors aren&apos;t open yet<span className="text-red">.</span>
+            {t("headlineA")}<span className="text-red">,</span>{t("headlineB")}<span className="text-red">.</span>
           </h1>
-          <p className="mt-5 font-serif text-2xl italic leading-snug text-ink-muted sm:text-3xl">but the first ones in get the founder deal — forever.</p>
+          <p className="mt-5 font-serif text-2xl italic leading-snug text-ink-muted sm:text-3xl">{t("tagline")}</p>
           <p className="mt-6 max-w-xl text-base leading-relaxed text-ink-muted">
-            <strong className="font-semibold text-ink">Sorry, It&apos;s a Private Party</strong> is a members club for Lisbon nightlife. Pay one membership, get <span className="text-ink">keys</span> every month, spend them on free or discounted tickets at the city&apos;s best events &amp; nightlife affairs. Pre-register now and your membership terms are locked at the founder deal for as long as you stay a member. After launch, nobody gets it.
+            <strong className="font-semibold text-ink">{t("introBrand")}</strong>
+            {t.rich("introBody", { keys: (chunks) => <span className="text-ink">{chunks}</span> })}
           </p>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-ink">
-            Founding memberships are limited to <strong className="font-semibold text-red-soft">100 members</strong>. Be on that 100.
+            {t("limitA")}<strong className="font-semibold text-red-soft">{t("limitStrong")}</strong>{t("limitB")}
           </p>
         </div>
 
         <div className="night-card p-6 sm:p-8 lg:col-start-2 lg:row-span-2 lg:row-start-1" id="register">
-          <h2 className="font-display text-2xl leading-tight">get on the list<span className="text-red">.</span></h2>
-          <p className="mt-2 font-serif text-lg italic text-ink-muted">takes ten seconds. we&apos;ll do the rest.</p>
-          {unsubscribed && <p className="mt-4 rounded-xl border border-ok/40 bg-ok/10 px-4 py-3 text-sm text-ok">you&apos;re off the list. the door&apos;s still here if you change your mind.</p>}
-          {error && <p role="alert" className="mt-4 rounded-xl border border-red/40 bg-red/10 px-4 py-3 text-sm text-red-soft">{error}</p>}
+          <h2 className="font-display text-2xl leading-tight">{t("formTitle")}<span className="text-red">.</span></h2>
+          <p className="mt-2 font-serif text-lg italic text-ink-muted">{t("formTagline")}</p>
+          {unsubscribed && <p className="mt-4 rounded-xl border border-ok/40 bg-ok/10 px-4 py-3 text-sm text-ok">{t("unsubscribed")}</p>}
+          {errorKey && <p role="alert" className="mt-4 rounded-xl border border-red/40 bg-red/10 px-4 py-3 text-sm text-red-soft">{t(`errors.${errorKey}`)}</p>}
           <form action={preRegisterAction} className="mt-6 flex flex-col gap-3">
             <input type="hidden" name="utmQuery" value={utmQuery} />
             {Object.entries(utm).map(([k, v]) => (v ? <input key={k} type="hidden" name={`utm_${k}`} value={v} /> : null))}
@@ -85,16 +90,16 @@ export default async function FoundersPage({ searchParams }: { searchParams: Pro
               <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
             </div>
             <label className="flex flex-col gap-1 text-sm text-ink-muted">
-              first name <span className="text-xs">(optional)</span>
+              {t("labelName")} <span className="text-xs">{t("optional")}</span>
               <input name="name" type="text" autoComplete="given-name" maxLength={80} placeholder="Ana" className="input-dark" />
             </label>
             <label className="flex flex-col gap-1 text-sm text-ink-muted">
-              email
+              {t("labelEmail")}
               <input name="email" type="email" required autoComplete="email" inputMode="email" maxLength={254} placeholder="you@example.com" className="input-dark" />
             </label>
             {cities.length > 1 && (
               <label className="flex flex-col gap-1 text-sm text-ink-muted">
-                your city
+                {t("labelCity")}
                 <select name="cityId" defaultValue={cities[0]!.id} className="input-dark">
                   {cities.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -105,26 +110,24 @@ export default async function FoundersPage({ searchParams }: { searchParams: Pro
             {cities.length === 1 && <input type="hidden" name="cityId" value={cities[0]!.id} />}
             <label className="mt-1 flex items-start gap-3 text-sm text-ink-muted">
               <input name="consent" type="checkbox" required className="mt-1 h-4 w-4 shrink-0 accent-red" />
-              <span>
-                contact me when SIAPP opens and keep my founder deal. I&apos;m 24 or older. see the <Link href="/legal/privacy" className="underline hover:text-ink">privacy notice</Link>.
-              </span>
+              <span>{t.rich("consent", { privacy: (chunks) => <Link href="/legal/privacy" className="underline hover:text-ink">{chunks}</Link> })}</span>
             </label>
-            <SubmitButton pending="locking it in…">Lock in my founder deal</SubmitButton>
-            <p className="text-center text-xs text-ink-muted">no payment today. one email when we open. unsubscribe any time.</p>
+            <SubmitButton pending={t("submitting")}>{t("submit")}</SubmitButton>
+            <p className="text-center text-xs text-ink-muted">{t("small")}</p>
           </form>
         </div>
 
         <ul className="grid gap-4 sm:grid-cols-3 lg:col-start-1 lg:row-start-2">
-          <Perk title="locked forever" body="the best terms we'll ever offer, fixed for as long as you stay a member. never on sale again." />
-          <Perk title="first through the door" body="you're invited to create your account before the public launch — and before the private sales open." />
-          <Perk title="no spam, no card" body="one email when we open. nothing to pay today, nothing to cancel." />
+          <Perk title={t("perk1Title")} body={t("perk1Body")} />
+          <Perk title={t("perk2Title")} body={t("perk2Body")} />
+          <Perk title={t("perk3Title")} body={t("perk3Body")} />
         </ul>
       </section>
 
       <section className="grid gap-6 border-t border-line py-10 sm:grid-cols-3">
-        <Step n="1" title="pre-register" body="leave your email. you get a founder number and a confirmation — that's it." />
-        <Step n="2" title="we open the doors" body="Lisbon first. you get the invitation before anyone else, with the founder deal already applied." />
-        <Step n="3" title="spend your keys" body={<>every month your membership gives you <KeyIcon className="inline h-4 w-4 -mt-0.5 text-red" /> keys. spend them on free or discounted entry at partner parties. show the QR at the door. you&apos;re in.</>} />
+        <Step n="1" title={t("step1Title")} body={t("step1Body")} />
+        <Step n="2" title={t("step2Title")} body={t("step2Body")} />
+        <Step n="3" title={t("step3Title")} body={<>{t("step3BodyA")}<KeyIcon className="inline h-4 w-4 -mt-0.5 text-red" />{t("step3BodyB")}</>} />
       </section>
 
       <LegalFooter className="mt-auto" />

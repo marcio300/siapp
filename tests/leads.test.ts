@@ -103,9 +103,9 @@ describe("founder pre-registration (leads)", () => {
     const rows = await prisma.founderLead.findMany({ include: { city: { select: { name: true } } }, orderBy: { number: "asc" } });
     const csv = leadsCsv(rows);
     const lines = csv.trim().split("\r\n");
-    expect(lines[0]).toBe("number,email,name,city,status,signed_up_at,consent_at,utm_source,utm_medium,utm_campaign,utm_content,utm_term,referrer,contacted_at,converted_at,unsubscribed_at");
+    expect(lines[0]).toBe("number,email,name,city,language,status,signed_up_at,consent_at,utm_source,utm_medium,utm_campaign,utm_content,utm_term,referrer,contacted_at,converted_at,unsubscribed_at");
     expect(lines).toHaveLength(5);
-    expect(lines[1]).toContain(`${ana.number},ana@example.com,Ana Silva,Lisbon,CONTACTED,`);
+    expect(lines[1]).toContain(`${ana.number},ana@example.com,Ana Silva,Lisbon,en,CONTACTED,`);
     expect(lines[1]).toContain(",instagram,paid,founders-nov,story-a,,https://l.instagram.com/,");
   });
 
@@ -166,6 +166,26 @@ describe("founder pre-registration (leads)", () => {
     // The batch cap holds even when handed more ids.
     const many = Array.from({ length: INVITE_BATCH_MAX + 10 }, (_, i) => `fake-${i}`);
     expect((await inviteLeads(many, staff.id, { paceMs: 0 })).skipped).toBe(INVITE_BATCH_MAX);
+  });
+
+  it("remembers the signup language and writes the emails in it (pt-PT), English by default", async () => {
+    const r = await registerFounderLead({ email: "joana@example.com", name: "Joana Reis", consent: true, locale: "pt" });
+    expect(r.lead.locale).toBe("pt");
+    const welcome = sent.at(-1)!;
+    expect(welcome.to).toBe("joana@example.com");
+    expect(welcome.subject).toBe(`és o fundador #${r.lead.number}`);
+    expect(welcome.text).toContain("desculpa, joana, chegaste cedo.");
+    expect(welcome.text).toContain(`/founders/unsubscribe?t=${r.lead.unsubscribeToken}`);
+    const staff = await prisma.staffUser.findFirstOrThrow();
+    await inviteLeads([r.lead.id], staff.id, { paceMs: 0 });
+    const invite = sent.at(-1)!;
+    expect(invite.subject).toBe(`fundador #${r.lead.number}, as portas abriram`);
+    expect(invite.text).toContain("Criar a minha conta: ");
+    expect(invite.html).not.toContain("Create my account");
+    // default stays English; a later signup in Portuguese switches the stored language
+    const en = await registerFounderLead({ email: "mark@example.com", consent: true });
+    expect(en.lead.locale).toBe("en");
+    expect((await registerFounderLead({ email: "mark@example.com", consent: true, locale: "pt" })).lead.locale).toBe("pt");
   });
 
   it("utmFromQuery ignores unknown keys and returns undefined when nothing is set", () => {

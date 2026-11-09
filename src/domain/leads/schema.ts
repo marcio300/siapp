@@ -26,6 +26,8 @@ export const PreRegistrationSchema = z.object({
     .optional(),
   referrer: optionalText(500),
   landingPath: optionalText(300),
+  /** Language of the page they signed up on (en|pt); emails to the lead go out in it. */
+  locale: z.enum(["en", "pt"]).optional(),
 });
 
 export type PreRegistrationInput = z.input<typeof PreRegistrationSchema>;

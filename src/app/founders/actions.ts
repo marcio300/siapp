@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { getLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { checkbox, text } from "@/lib/forms";
 import { LeadError, registerFounderLead } from "@/domain/leads";
@@ -16,6 +17,7 @@ const SIGNUPS_PER_MINUTE_PER_IP = 8;
  */
 export async function preRegisterAction(formData: FormData): Promise<void> {
   const h = await headers();
+  const locale = await getLocale();
   const utmQuery = text(formData, "utmQuery") ?? "";
   const back = (error: string) => redirect(`/founders?error=${error}${utmQuery ? `&${utmQuery}` : ""}`);
 
@@ -41,6 +43,7 @@ export async function preRegisterAction(formData: FormData): Promise<void> {
       },
       referrer: h.get("referer") ?? undefined,
       landingPath: "/founders",
+      locale: locale === "pt" ? "pt" : "en",
     });
     redirect(`/founders/thanks?n=${lead.number}`);
   } catch (e) {

@@ -53,12 +53,13 @@ export type LeadCsvRow = FounderLead & { city: { name: string } | null };
 /** Export for the CRM / ad platform (custom audiences). Member-supplied cells are formula-escaped by toCsv. */
 export function leadsCsv(rows: LeadCsvRow[]): string {
   return toCsv(
-    ["number", "email", "name", "city", "status", "signed_up_at", "consent_at", "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "referrer", "contacted_at", "converted_at", "unsubscribed_at"],
+    ["number", "email", "name", "city", "language", "status", "signed_up_at", "consent_at", "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "referrer", "contacted_at", "converted_at", "unsubscribed_at"],
     rows.map((r) => [
       r.number,
       r.email,
       r.name,
       r.city?.name ?? null,
+      r.locale,
       r.status,
       r.createdAt.toISOString(),
       r.consentAt.toISOString(),

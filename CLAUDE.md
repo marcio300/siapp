@@ -88,7 +88,14 @@ familiar.
   `src/domain/fraud`, `src/domain/settlement`.
 - Tests for every invariant in "Non-negotiable rules" before marking a phase done.
 - Feature flags via a `Setting` table (global defaults) — e.g. `cancellation_window_hours = 24`.
-- Copy is English-first; i18n-ready (next-intl) with `pt` as the second locale, but don't translate yet.
+- Copy is English-first; the app is bilingual EN + PT (Portugal) via next-intl WITHOUT locale routing: the locale is
+  resolved per request in `src/i18n/request.ts` (cookie `siapp_locale` set by the EN/PT toggle `GET /api/locale?set=&next=`,
+  else `Accept-Language`, else en). `messages/en.json` is the complete source; `messages/pt.json` holds ONLY translated
+  namespaces and is merged over en at load time (missing key → English), and `tests/i18n.test.ts` fails on any pt key that
+  doesn't exist in en. Pages: `getTranslations(ns)` / client: `useTranslations(ns)`; emails and anything outside a request:
+  `translatorFor(locale, ns)` from `src/i18n/messages.ts`. New UI copy goes in en.json from the start (no more inline
+  strings); translate it into pt.json in the same change when the screen is public-facing. Still inline + untranslated:
+  the member app, backoffice, sign-in and legal pages (the backoffice can stay English).
 - Commit small, conventional commits. Each phase in `docs/BUILD_PLAN.md` ends with a green test run.
 
 ## Out of scope for now (do not build, but keep the model ready)
@@ -570,6 +577,14 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   other address gets the same "check your inbox" screen and no email; `next` must start with `/admin`); `requireStaffPage` and
   the admin sign-out redirect there. `e2e/provision.ts` opens the switch (the e2e flow signs up a stranger). Prod has no
   `Setting` row for it → default 0 → closed until an ADMIN opens it. Tests `tests/signin-gate.test.ts` (2 → suite 158).
+  **Bilingual founders funnel (EN + pt-PT)**: `src/i18n/locales.ts` (`LOCALES`, `pickLocale(acceptLanguage)`, cookie consts),
+  `request.ts` resolves cookie → Accept-Language → en and merges pt over en; `src/i18n/messages.ts` `translatorFor(locale, ns)`
+  (createTranslator, works in jobs/tests); `GET /api/locale` toggle route + `src/components/locale-switch.tsx` (plain links,
+  no JS); root layout `<html lang>` from `getLocale()`. Translated: `/founders`, `/founders/thanks`, consent banner, legal
+  footer, welcome + invitation emails (namespaces `founders`, `foundersThanks`, `consent`, `founderEmails`, `legal`).
+  `FounderLead.locale` (migration `20261110150000_founder_lead_locale`; from the page's locale, refreshed on a repeat signup;
+  CSV column `language`, PT tag on the leads table) → emails to the lead go out in their language. Tests `tests/i18n.test.ts`
+  (3) + a pt email check in leads → suite 162.
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

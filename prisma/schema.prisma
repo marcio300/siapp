@@ -252,6 +252,7 @@ model FounderLead {
   cityId             String?
   status             FounderLeadStatus @default(NEW)
   consentAt          DateTime // ticked "contact me when SIAPP opens" (GDPR consent basis)
+  locale             String            @default("en") // language of the page they signed up on → emails go out in it
   utmSource          String?
   utmMedium          String?
   utmCampaign        String?

@@ -51,6 +51,7 @@ export async function registerFounderLead(raw: unknown, opts: RegisterOptions = 
           name: input.name ?? null,
           cityId: city?.id ?? null,
           consentAt: now,
+          locale: input.locale ?? "en",
           utmSource: input.utm?.source ?? null,
           utmMedium: input.utm?.medium ?? null,
           utmCampaign: input.utm?.campaign ?? null,
@@ -84,12 +85,13 @@ export async function registerFounderLead(raw: unknown, opts: RegisterOptions = 
   return { lead, created };
 }
 
-async function resubscribe(db: PrismaClient, row: FounderLead, input: { name?: string }, cityId: string | null, now: Date): Promise<FounderLead> {
+async function resubscribe(db: PrismaClient, row: FounderLead, input: { name?: string; locale?: string }, cityId: string | null, now: Date): Promise<FounderLead> {
   return db.founderLead.update({
     where: { id: row.id },
     data: {
       ...(input.name ? { name: input.name } : {}),
       ...(cityId ? { cityId } : {}),
+      ...(input.locale ? { locale: input.locale } : {}),
       consentAt: now,
       ...(row.status === "UNSUBSCRIBED" ? { status: "NEW", unsubscribedAt: null } : {}),
     },
