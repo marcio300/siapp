@@ -15,9 +15,9 @@ import { isDisposableEmail } from "@/domain/fraud/disposable";
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; sent?: string; error?: string; deleted?: string }>;
+  searchParams: Promise<{ next?: string; sent?: string; error?: string; deleted?: string; email?: string }>;
 }) {
-  const { next, sent, error, deleted } = await searchParams;
+  const { next, sent, error, deleted, email } = await searchParams;
   const t = await getTranslations("signIn");
   const session = await auth();
   if (session?.user) redirect(session.user.staffId ? "/admin" : "/app");
@@ -66,6 +66,7 @@ export default async function SignInPage({
                 name="email"
                 required
                 autoComplete="email"
+                defaultValue={email && email.length <= 254 ? email : undefined}
                 placeholder={t("placeholder")}
                 className="input-dark"
               />

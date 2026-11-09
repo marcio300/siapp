@@ -4,13 +4,15 @@ export default function CookiesPage() {
   return (
     <>
       <h1>cookies<span className="text-red">.</span></h1>
-      <p className="lead">We use only cookies the service needs to work. There is no advertising, no analytics tracker and no consent banner because there is nothing to consent to.</p>
+      <p className="lead">The app itself uses only cookies it needs to work — no analytics, no advertising. The one exception is our pre-launch founders page, where a Meta pixel measures whether our ads brought you there; it loads only if you say yes to the banner.</p>
       <table>
         <thead><tr><th>Cookie</th><th>Purpose</th><th>Lifetime</th></tr></thead>
         <tbody>
           <tr><td><code>authjs.session-token</code> (and CSRF/callback cookies)</td><td>Keeps you signed in after the email link</td><td>30 days</td></tr>
           <tr><td><code>siapp_ref</code></td><td>Remembers a friend&apos;s invite link until you finish signing up</td><td>30 days</td></tr>
           <tr><td><code>siapp_scan</code></td><td>The door&apos;s scanner session for one event</td><td>Until 12 h after the event</td></tr>
+          <tr><td><code>siapp_consent</code></td><td>Remembers your answer to the cookie banner on the founders page (yes or no)</td><td>1 year</td></tr>
+          <tr><td><code>_fbp</code>, <code>_fbc</code> (Meta)</td><td>Meta pixel on <code>/founders</code> only, after consent: tells Meta a visit or pre-registration came from one of our ads. Meta is a joint controller for this measurement; see Meta&apos;s data policy.</td><td>90 days</td></tr>
         </tbody>
       </table>
       <h2>Local storage</h2>

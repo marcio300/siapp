@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { LegalFooter } from "@/components/legal-footer";
 import { KeyIcon } from "@/components/key-icon";
 import { Wordmark } from "@/components/wordmark";
+import { MetaPixel } from "@/components/meta-pixel";
 import { utmFromQuery } from "@/domain/leads";
 import { preRegisterAction } from "./actions";
 import { SubmitButton } from "./submit-button";
@@ -45,6 +46,7 @@ export default async function FoundersPage({ searchParams }: { searchParams: Pro
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-6 sm:py-8">
+      <MetaPixel pixelId={process.env.NEXT_PUBLIC_META_PIXEL_ID} />
       <header className="flex items-center justify-between">
         <Link href="/founders" aria-label="SIAPP"><Wordmark /></Link>
         <Link href="/sign-in" className="whitespace-nowrap text-sm text-ink-muted hover:text-ink"><span className="hidden sm:inline">already a member? </span>sign in</Link>

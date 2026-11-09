@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { runSeed } from "../prisma/seed-data";
 import { setEmailSinkForTests, type SendEmailInput } from "@/lib/email";
 import { memberAdapter } from "@/lib/auth-adapter";
-import { LeadError, leadStats, leadsCsv, linkLeadToMember, markLeadsContacted, registerFounderLead, reopenLead, unsubscribeLead, utmFromQuery } from "@/domain/leads";
+import { INVITE_BATCH_MAX, LeadError, inviteLeads, leadStats, leadsCsv, linkLeadToMember, markLeadsContacted, registerFounderLead, reopenLead, unsubscribeLead, utmFromQuery } from "@/domain/leads";
 import { prisma, resetDatabase } from "./db";
 
 const sent: SendEmailInput[] = [];
@@ -123,6 +123,49 @@ describe("founder pre-registration (leads)", () => {
     // A converted lead never goes back to "to contact".
     const staff = await prisma.staffUser.findFirstOrThrow();
     expect(await markLeadsContacted([lead.id], staff.id)).toBe(0);
+  });
+
+  it("sends launch invitations: NEW only unless resend, marks contacted, a failed send leaves the lead NEW", async () => {
+    const staff = await prisma.staffUser.findFirstOrThrow();
+    const a = (await registerFounderLead({ email: "inv-a@example.com", name: "Eva Costa", consent: true })).lead;
+    const b = (await registerFounderLead({ email: "inv-b@example.com", consent: true })).lead;
+    const c = (await registerFounderLead({ email: "inv-c@example.com", consent: true })).lead;
+    await unsubscribeLead(c.unsubscribeToken);
+    const converted = await prisma.founderLead.findUniqueOrThrow({ where: { email: "ana@example.com" } });
+    sent.length = 0;
+
+    // b's email provider is down for this call.
+    setEmailSinkForTests(async (m) => {
+      if (m.to === "inv-b@example.com") throw new Error("Resend failed: 503");
+      sent.push(m);
+    });
+    const r = await inviteLeads([a.id, b.id, c.id, converted.id, a.id], staff.id, { paceMs: 0 });
+    expect(r).toMatchObject({ sent: 1, skipped: 2 });
+    expect(r.failed).toEqual([{ id: b.id, email: "inv-b@example.com", error: "Resend failed: 503" }]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toBe("inv-a@example.com");
+    expect(sent[0]!.subject).toBe(`founder #${a.number}, the doors are open`);
+    expect(sent[0]!.text).toContain("sorry, eva — we kept you waiting.");
+    expect(sent[0]!.text).toContain(`/sign-in?email=${encodeURIComponent("inv-a@example.com")}&next=%2Fapp`);
+    expect(sent[0]!.text).toContain(`/founders/unsubscribe?t=${a.unsubscribeToken}`);
+    const rowA = await prisma.founderLead.findUniqueOrThrow({ where: { id: a.id } });
+    expect(rowA).toMatchObject({ status: "CONTACTED", contactedById: staff.id, invitationCount: 1 });
+    expect(rowA.invitedAt).not.toBeNull();
+    expect((await prisma.founderLead.findUniqueOrThrow({ where: { id: b.id } })).status).toBe("NEW"); // retryable
+    expect((await prisma.founderLead.findUniqueOrThrow({ where: { id: c.id } })).status).toBe("UNSUBSCRIBED");
+
+    // Retry works once the provider is back; a plain re-run skips the already-contacted lead, resend includes it.
+    setEmailSinkForTests(async (m) => {
+      sent.push(m);
+    });
+    expect(await inviteLeads([a.id, b.id], staff.id, { paceMs: 0 })).toMatchObject({ sent: 1, skipped: 1, failed: [] });
+    expect(await inviteLeads([a.id], staff.id, { paceMs: 0, resend: true })).toMatchObject({ sent: 1, skipped: 0 });
+    const again = await prisma.founderLead.findUniqueOrThrow({ where: { id: a.id } });
+    expect(again.invitationCount).toBe(2);
+    expect(again.contactedAt).toEqual(rowA.contactedAt); // first contact date is kept
+    // The batch cap holds even when handed more ids.
+    const many = Array.from({ length: INVITE_BATCH_MAX + 10 }, (_, i) => `fake-${i}`);
+    expect((await inviteLeads(many, staff.id, { paceMs: 0 })).skipped).toBe(INVITE_BATCH_MAX);
   });
 
   it("utmFromQuery ignores unknown keys and returns undefined when nothing is set", () => {

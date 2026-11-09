@@ -7,13 +7,13 @@ import { Badge, type BadgeTone } from "@/components/backoffice/badge";
 import { PageHeader } from "@/components/backoffice/page-header";
 import { StatCard } from "@/components/backoffice/stat-card";
 import { EmptyRow, Table, Td, Th } from "@/components/backoffice/table";
-import { LEAD_STATUSES, leadStats } from "@/domain/leads";
-import { markContactedAction, reopenLeadAction } from "./actions";
+import { INVITE_BATCH_MAX, LEAD_STATUSES, leadStats } from "@/domain/leads";
+import { markContactedAction, reopenLeadAction, sendInvitationsAction } from "./actions";
 
 const TONE: Record<FounderLeadStatus, BadgeTone> = { NEW: "warn", CONTACTED: "neutral", CONVERTED: "ok", UNSUBSCRIBED: "red" };
 const PAGE = 200;
 
-type Search = { status?: string; q?: string; source?: string; contacted?: string; reopened?: string; error?: string };
+type Search = { status?: string; q?: string; source?: string; contacted?: string; reopened?: string; error?: string; invited?: string; failed?: string; skipped?: string };
 
 /** Pre-registrations from /founders: who to invite when the doors open, and where they came from. */
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -35,12 +35,13 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const filterQuery = new URLSearchParams(Object.entries({ status: status ?? "", q, source }).filter(([, v]) => v)).toString();
   const back = `/admin/leads${filterQuery ? `?${filterQuery}` : ""}`;
   const newIds = rows.filter((r) => r.status === "NEW").map((r) => r.id);
+  const inviteIds = newIds.slice(0, INVITE_BATCH_MAX);
 
   return (
     <>
       <PageHeader
         title="Founders"
-        subtitle="Pre-registrations from /founders. They're leads, not members: when the doors open, invite them to create an account with the same email and the row flips to converted by itself."
+        subtitle="Pre-registrations from /founders. They're leads, not members: when the doors open, send the invitation — they sign in with the same email, the account is created and the row flips to converted by itself."
         actions={
           <>
             <Link href={`/api/admin/leads/csv${filterQuery ? `?${filterQuery}` : ""}`} className="btn btn-outline">Export CSV</Link>
@@ -49,6 +50,13 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         }
       />
       {sp.contacted && <p className="mb-4 rounded-lg border border-ok/40 bg-ok/15 px-4 py-2 text-sm">{sp.contacted} marked as contacted.</p>}
+      {sp.invited !== undefined && (
+        <p className={`mb-4 rounded-lg border px-4 py-2 text-sm ${sp.failed ? "border-warn/50 bg-warn/15" : "border-ok/40 bg-ok/15"}`}>
+          {sp.invited} {sp.invited === "1" ? "invitation" : "invitations"} sent.
+          {sp.failed && <> {sp.failed} failed to send — those leads stay in "to contact"; click again to retry (details in the server log).</>}
+          {sp.skipped && <> {sp.skipped} skipped (already contacted, converted or unsubscribed).</>}
+        </p>
+      )}
       {sp.reopened && <p className="mb-4 rounded-lg border border-ok/40 bg-ok/15 px-4 py-2 text-sm">Lead is back in the to-contact list.</p>}
       {sp.error && <p className="mb-4 rounded-lg border border-red/40 bg-red/10 px-4 py-2 text-sm text-red">Nothing changed — the lead isn&apos;t in the contacted state.</p>}
 
@@ -85,14 +93,27 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       </form>
 
       {newIds.length > 0 && (
-        <form action={markContactedAction} className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-line-light bg-white px-4 py-2 text-sm">
-          <input type="hidden" name="back" value={back} />
-          {newIds.map((id) => (
-            <input key={id} type="hidden" name="ids" value={id} />
-          ))}
-          <span className="text-ink-dark-muted">{newIds.length} of the leads below still need the invitation.</span>
-          <button className="btn btn-outline !py-1 text-xs">Mark these {newIds.length} as contacted</button>
-        </form>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line-light bg-white px-4 py-2 text-sm">
+          <span className="text-ink-dark-muted">
+            {newIds.length} of the leads below still need the invitation{newIds.length > INVITE_BATCH_MAX ? ` — sent ${INVITE_BATCH_MAX} at a time, click again for the next batch` : ""}.
+          </span>
+          <div className="flex gap-2">
+            <form action={markContactedAction}>
+              <input type="hidden" name="back" value={back} />
+              {newIds.map((id) => (
+                <input key={id} type="hidden" name="ids" value={id} />
+              ))}
+              <button className="btn btn-ghost !py-1 text-xs" title="You contacted them another way — no email from here">Mark {newIds.length} as contacted</button>
+            </form>
+            <form action={sendInvitationsAction}>
+              <input type="hidden" name="back" value={back} />
+              {inviteIds.map((id) => (
+                <input key={id} type="hidden" name="ids" value={id} />
+              ))}
+              <button className="btn btn-primary !py-1 text-xs">Send {inviteIds.length} {inviteIds.length === 1 ? "invitation" : "invitations"}</button>
+            </form>
+          </div>
+        </div>
       )}
 
       <Table>
@@ -124,23 +145,37 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
               <Td>
                 <Badge tone={TONE[r.status]}>{r.status.toLowerCase()}</Badge>
                 {r.status === "CONVERTED" && r.member && <Link href={`/admin/members/${r.member.id}`} className="ml-2 text-xs hover:text-red">member →</Link>}
-                {r.status === "CONTACTED" && r.contactedAt && <span className="ml-2 text-xs text-ink-dark-muted">{formatDate(r.contactedAt)}</span>}
+                {r.status === "CONTACTED" && r.contactedAt && (
+                  <span className="ml-2 text-xs text-ink-dark-muted">
+                    {r.invitedAt ? `invited ${formatDate(r.invitedAt)}${r.invitationCount > 1 ? ` (×${r.invitationCount})` : ""}` : `by hand ${formatDate(r.contactedAt)}`}
+                  </span>
+                )}
               </Td>
               <Td className="whitespace-nowrap text-ink-dark-muted">{formatDate(r.createdAt)}</Td>
               <Td align="right">
-                {r.status === "NEW" && (
-                  <form action={markContactedAction}>
-                    <input type="hidden" name="back" value={back} />
-                    <input type="hidden" name="ids" value={r.id} />
-                    <button className="btn btn-ghost !py-1 text-xs">Contacted</button>
-                  </form>
-                )}
-                {r.status === "CONTACTED" && (
-                  <form action={reopenLeadAction}>
-                    <input type="hidden" name="back" value={back} />
-                    <input type="hidden" name="id" value={r.id} />
-                    <button className="btn btn-ghost !py-1 text-xs">Undo</button>
-                  </form>
+                {(r.status === "NEW" || r.status === "CONTACTED") && (
+                  <div className="flex items-center justify-end gap-1">
+                    <form action={sendInvitationsAction}>
+                      <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="ids" value={r.id} />
+                      {r.status === "CONTACTED" && <input type="hidden" name="resend" value="1" />}
+                      <button className="btn btn-ghost !py-1 text-xs">{r.status === "NEW" ? "Send invite" : "Resend"}</button>
+                    </form>
+                    {r.status === "NEW" && (
+                      <form action={markContactedAction}>
+                        <input type="hidden" name="back" value={back} />
+                        <input type="hidden" name="ids" value={r.id} />
+                        <button className="btn btn-ghost !py-1 text-xs" title="Contacted another way">Contacted</button>
+                      </form>
+                    )}
+                    {r.status === "CONTACTED" && (
+                      <form action={reopenLeadAction}>
+                        <input type="hidden" name="back" value={back} />
+                        <input type="hidden" name="id" value={r.id} />
+                        <button className="btn btn-ghost !py-1 text-xs">Undo</button>
+                      </form>
+                    )}
+                  </div>
                 )}
               </Td>
             </tr>

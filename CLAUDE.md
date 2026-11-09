@@ -551,7 +551,16 @@ score effects on access (we only *record* attendance/no-shows), cities beyond Li
   contacted" for the filtered NEW rows, `GET /api/admin/leads/csv?status&q&source`. Sign-in page links to it ("get the founder
   deal"); privacy notice gained the pre-registration row. NOT decided yet: what the founder deal concretely is (price/keys/tier)
   — `docs/DECISIONS_PENDING.md` #17 — and the invitation email itself (staff send it by hand / from the CSV, then mark contacted).
-  No ad pixel on the page yet (needs cookie consent first). Tests `tests/leads.test.ts` (6 → suite 155).
+  **Invitations** (`src/domain/leads/invite.ts` `inviteLeads(ids, staffId, {resend, paceMs})`, cap `INVITE_BATCH_MAX` 50 per
+  click, 400 ms pacing for Resend's rate limit, each lead sent + marked on its own so a failure leaves that lead NEW for a
+  retry; `founderInvitationEmail` CTA = `/sign-in?email=<lead>&next=/app` — the sign-in form prefills `?email=`; columns
+  `invitedAt` + `invitationCount`, migration `20261110120000_founder_lead_invitations`): leads page "Send N invitations" on
+  the filtered NEW rows (+ "Mark as contacted" for by-hand contact), per-row Send invite / Resend / Undo, result banner
+  `?invited=&failed=&skipped=`. **Meta pixel + consent**: `src/components/consent-banner.tsx` (cookie `siapp_consent`
+  accepted|declined 1 y, dispatches `siapp:consent`) + `meta-pixel.tsx` (loads fbevents.js ONLY after accept; PageView, thanks
+  page `Lead` w/ `eventID founder-{n}` for CAPI dedupe later) mounted via `src/app/founders/layout.tsx`; env
+  `NEXT_PUBLIC_META_PIXEL_ID` (unset = no pixel, no banner — set it in Vercel); cookies notice lists `siapp_consent` + `_fbp/_fbc`.
+  Tests `tests/leads.test.ts` (7 → suite 156).
 - **Phase 0 decisions to know**: `Member.cityId` is nullable until onboarding (Phase 3) — the magic link
   creates the row before any profile exists. Spec's "50 keys / €18" placeholder broke the spec's own
   "packs never cheaper per key than REGULAR" rule, so it's seeded at €20 (test enforces the rule). FREE

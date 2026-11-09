@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalFooter } from "@/components/legal-footer";
 import { Wordmark } from "@/components/wordmark";
+import { MetaPixel } from "@/components/meta-pixel";
 import { ShareButton } from "./share-button";
 
 export const metadata: Metadata = { title: "you're on the list", robots: { index: false, follow: false } };
@@ -18,6 +19,7 @@ export default async function FoundersThanksPage({ searchParams }: { searchParam
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-6 sm:py-8">
+      <MetaPixel pixelId={process.env.NEXT_PUBLIC_META_PIXEL_ID} event="Lead" eventId={number !== null ? `founder-${number}` : undefined} />
       <Link href="/founders" aria-label="SIAPP"><Wordmark /></Link>
       <div className="flex flex-1 flex-col justify-center py-12">
         {number !== null && <p className="badge badge-red self-start">founder #{number}</p>}

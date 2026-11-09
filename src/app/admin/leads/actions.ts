@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/authz";
 import { multi, text } from "@/lib/forms";
-import { markLeadsContacted, reopenLead } from "@/domain/leads";
+import { inviteLeads, markLeadsContacted, reopenLead } from "@/domain/leads";
 
 function back(formData: FormData, extra: string): never {
   const base = text(formData, "back") ?? "/admin/leads";
@@ -24,4 +24,20 @@ export async function reopenLeadAction(formData: FormData): Promise<void> {
   const id = text(formData, "id") ?? "";
   const ok = await reopenLead(id);
   back(formData, ok ? "reopened=1" : "error=not_contacted");
+}
+
+/**
+ * Email the launch invitation to the given leads (NEW ones; `resend=1` also
+ * re-sends to CONTACTED) and mark them contacted. Capped per click.
+ */
+export async function sendInvitationsAction(formData: FormData): Promise<void> {
+  const staff = await requireStaff("OPS");
+  const ids = multi(formData, "ids");
+  const resend = text(formData, "resend") === "1";
+  const r = await inviteLeads(ids, staff.staffId, { resend });
+  const parts = [`invited=${r.sent}`];
+  if (r.failed.length) parts.push(`failed=${r.failed.length}`);
+  if (r.skipped) parts.push(`skipped=${r.skipped}`);
+  if (r.failed.length) console.error("founder invitations failed", r.failed);
+  back(formData, parts.join("&"));
 }

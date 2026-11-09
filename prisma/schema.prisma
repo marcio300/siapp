@@ -261,6 +261,8 @@ model FounderLead {
   landingPath        String?
   unsubscribeToken   String            @unique @default(cuid())
   welcomeEmailSentAt DateTime?
+  invitedAt          DateTime? // last launch invitation email sent from the backoffice (contactedAt is the first)
+  invitationCount    Int               @default(0)
   contactedAt        DateTime?
   contactedById      String?
   convertedAt        DateTime?
