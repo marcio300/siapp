@@ -54,7 +54,7 @@
     "badge": "membro fundador #{number}",
     "headline": "estás dentro. bem, quase.",
     "tagline": "as tuas condições de membro fundador estão garantidas. falamos contigo quando as portas abrirem.",
-    "step1": "vê na tua caixa de entrada a confirmação de <b>hello@siapp.club</b> (também no spam — e tira-a de lá, para o convite chegar bem).",
+    "step1": "vê na tua caixa de entrada a confirmação de <b>{sender}</b> (também no spam — e tira-a de lá, para o convite chegar bem).",
     "step2": "quando abrirmos em Lisboa recebes um único email com o teu convite. cria a tua conta com este mesmo endereço e as condições de membro fundador já lá estão.",
     "step3": "nada a pagar hoje. nada a cancelar.",
     "share": "Traz um amigo mais cedo",

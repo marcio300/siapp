@@ -6,6 +6,13 @@ import { LocaleSwitch } from "@/components/locale-switch";
 import { MetaPixel } from "@/components/meta-pixel";
 import { Wordmark } from "@/components/wordmark";
 import { ShareButton } from "./share-button";
+import { DEFAULT_EMAIL_FROM } from "@/lib/email";
+
+/** The bare address out of `EMAIL_FROM` ("SIAPP <hello@…>" → "hello@…") — the page tells people which sender to look for. */
+function senderAddress(): string {
+  const from = process.env.EMAIL_FROM || DEFAULT_EMAIL_FROM;
+  return /<([^>]+)>/.exec(from)?.[1] ?? from;
+}
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("foundersThanks");
@@ -43,7 +50,7 @@ export default async function FoundersThanksPage({ searchParams }: { searchParam
           {(["step1", "step2", "step3"] as const).map((k) => (
             <li key={k} className="flex gap-3">
               <span className="text-red">—</span>
-              <span>{t.rich(k, { b: (chunks) => <span className="text-ink">{chunks}</span> })}</span>
+              <span>{t.rich(k, { b: (chunks) => <span className="text-ink">{chunks}</span>, sender: senderAddress() })}</span>
             </li>
           ))}
         </ul>

@@ -88,7 +88,7 @@
     "badge": "founder #{number}",
     "headline": "you're in. well, nearly.",
     "tagline": "your founder deal is locked. we'll be in touch when the doors open.",
-    "step1": "check your inbox for a confirmation from <b>hello@siapp.club</b> (spam folder too — then drag it out, so the invitation lands).",
+    "step1": "check your inbox for a confirmation from <b>{sender}</b> (spam folder too — then drag it out, so the invitation lands).",
     "step2": "when we open in Lisbon you get one email with your invitation. create your account with this same address and the founder deal is already on it.",
     "step3": "nothing to pay today. nothing to cancel.",
     "share": "Bring a friend in early",
